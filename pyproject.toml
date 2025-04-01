@@ -1,0 +1,19 @@
+[project]
+name = "egnn_mass_prediction"
+version = "0.1.0"
+description = "Predicting center of mass from LiDAR-like point clouds using equivariant GNNs"
+authors = [{ name = "Jonathan" }]
+requires-python = ">=3.13"
+dependencies = [
+    "torch",
+    "pytorch-lightning",
+    "numpy",
+    "trimesh",
+    "matplotlib",
+    "scipy",
+    "rtree"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
