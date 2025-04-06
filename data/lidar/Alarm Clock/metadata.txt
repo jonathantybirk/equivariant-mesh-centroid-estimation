@@ -1,0 +1,6 @@
+Object: Alarm Clock
+Center of mass: [-2.11329803e-08 -4.14158601e-02 -4.84777888e-02]
+Camera distance (radius): 0.7300797601858307
+Camera 1 position: [ 0.63459095 -0.09177471 -0.40593373]
+Camera 2 position: [-0.1241106   0.67749602 -0.07638345]
+Camera 3 position: [ 0.0192107  -0.76181304  0.06846365]

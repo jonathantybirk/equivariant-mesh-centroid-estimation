@@ -221,7 +221,7 @@ def main():
     parser.add_argument('--show-combined', action='store_true', help='Show combined mesh and point cloud visualization')
     args = parser.parse_args()
     
-    # Determine default visualization if none specified
+    # Set default visualization options if none specified
     if not (args.show_pointcloud or args.show_mesh or args.show_combined):
         show_pointcloud = True
         show_mesh = False
@@ -232,12 +232,12 @@ def main():
         show_combined = args.show_combined
     
     # Locate folders based on the new structure
-    # We assume this script is in <repo_root>/scripts, so go up one level:
+    # Assume this script is in <repo_root>/scripts, so go up one level:
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     
     # INPUT: data/meshes/obj
     objects_dir = os.path.join(repo_root, "data", "meshes", "obj")
-    # OUTPUT: data/lidar
+    # OUTPUT: data/lidar (this folder will be created if it doesn't exist)
     output_dir = os.path.join(repo_root, "data", "lidar")
     
     if args.save:
@@ -248,28 +248,28 @@ def main():
     if not obj_files:
         raise FileNotFoundError(f"No .obj files found in {objects_dir}")
     
-    # Process each .obj
+    # Process each .obj file
     for obj_file in obj_files:
         print(f"Processing {obj_file}...")
         mesh_path = os.path.join(objects_dir, obj_file)
-        
-        # Create output directory for this object
         obj_name = os.path.splitext(obj_file)[0]
+        
+        # Create output directory for this object if saving is enabled
         if args.save:
             obj_output_dir = os.path.join(output_dir, obj_name)
             os.makedirs(obj_output_dir, exist_ok=True)
         
-        # Load mesh & compute COM
+        # Load mesh and compute center of mass
         mesh = load_mesh(mesh_path)
         center_of_mass = compute_center_of_mass(mesh)
         print(f"  Center of mass: {center_of_mass}")
         
-        # Camera distance: 2x bounding sphere radius
+        # Determine camera distance: 2x bounding sphere radius
         bounding_sphere = mesh.bounding_sphere
         radius = bounding_sphere.primitive.radius * 2.0
         
-        # Generate camera positions (example: 1 camera)
-        num_cameras = 1
+        # Generate camera positions (example: 3 cameras)
+        num_cameras = 3
         camera_positions = generate_camera_positions(center_of_mass, radius, num_cameras=num_cameras)
         
         # Simulate LiDAR from each camera
@@ -293,7 +293,9 @@ def main():
             all_points_by_camera.append(pts)
             
             if args.save:
-                np.save(os.path.join(obj_output_dir, f"pointcloud_cam{cam_idx+1}.npy"), pts)
+                filename = os.path.join(obj_output_dir, f"pointcloud_cam{cam_idx+1}.npy")
+                np.save(filename, pts)
+                print(f"Saved point cloud for Camera {cam_idx+1} to {filename}")
         
         all_points = np.concatenate(all_points, axis=0)
         
@@ -302,7 +304,7 @@ def main():
             np.save(os.path.join(obj_output_dir, "camera_positions.npy"), camera_positions)
             np.save(os.path.join(obj_output_dir, "center_of_mass.npy"), center_of_mass)
             
-            # Save metadata
+            # Save metadata as a text file
             with open(os.path.join(obj_output_dir, "metadata.txt"), "w") as f:
                 f.write(f"Object: {obj_name}\n")
                 f.write(f"Center of mass: {center_of_mass}\n")
@@ -310,32 +312,21 @@ def main():
                 for i, cam in enumerate(camera_positions):
                     f.write(f"Camera {i+1} position: {cam}\n")
             
-            print(f"  Results saved to {obj_output_dir}")
+            print(f"Results saved to {obj_output_dir}")
         
-        # Define colors for cameras
-        camera_colors = [
-            [255, 0, 0],    # Red
-            [0, 255, 0],    # Green
-            [0, 0, 255],    # Blue
-            [255, 255, 0],  # Yellow
-            [255, 0, 255],  # Magenta
-            [0, 255, 255]   # Cyan
-        ]
-        mpl_camera_colors = [(r/255, g/255, b/255) for r, g, b in camera_colors]
-        
-        # --- Plotting ---
+        # --- Plotting (if visualizations are enabled) ---
         if (not args.no_show) and show_pointcloud:
             fig = plt.figure(figsize=(6, 5))
             ax = fig.add_subplot(111, projection='3d')
             
             # Plot LiDAR points (colored by camera)
             for idx, pts in enumerate(all_points_by_camera):
-                color = mpl_camera_colors[idx % len(mpl_camera_colors)]
+                color = [(r/255, g/255, b/255) for r, g, b in [(255, 0, 0), (0, 255, 0), (0, 0, 255)]][idx % 3]
                 ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=1, color=color, alpha=0.6)
             
-            # Plot cameras & target points
+            # Plot camera positions and target points
             for idx, (cam, target) in enumerate(zip(camera_positions, target_points)):
-                color = mpl_camera_colors[idx % len(mpl_camera_colors)]
+                color = [(r/255, g/255, b/255) for r, g, b in [(255, 0, 0), (0, 255, 0), (0, 0, 255)]][idx % 3]
                 ax.scatter(cam[0], cam[1], cam[2], marker='^', s=100, color=color, label=f'Camera {idx+1}')
                 ax.scatter(target[0], target[1], target[2], marker='x', s=50, color=color)
                 line = np.vstack((cam, target))
@@ -357,100 +348,7 @@ def main():
             plt.show()
             plt.close()
         
-        # Optional mesh-only visualization
-        if (not args.no_show) and show_mesh:
-            scene = trimesh.Scene()
-            scene.add_geometry(mesh)
-            
-            com_sphere = trimesh.primitives.Sphere(radius=radius/15, center=center_of_mass)
-            com_sphere.visual.face_colors = [255, 0, 0, 255]
-            scene.add_geometry(com_sphere)
-            
-            for idx, (cam_pos, target) in enumerate(zip(camera_positions, target_points)):
-                direction = target - cam_pos
-                direction /= np.linalg.norm(direction)
-                
-                cam_marker = trimesh.creation.cone(radius=radius/20, height=radius/10)
-                
-                z_axis = np.array([0, 0, 1])
-                rotation_axis = np.cross(z_axis, direction)
-                if np.linalg.norm(rotation_axis) > 1e-6:
-                    rotation_axis /= np.linalg.norm(rotation_axis)
-                    angle = np.arccos(np.dot(z_axis, direction))
-                    rotation = trimesh.transformations.rotation_matrix(angle, rotation_axis)
-                else:
-                    rotation = np.eye(4)
-                
-                translation = trimesh.transformations.translation_matrix(cam_pos)
-                transform = trimesh.transformations.concatenate_matrices(translation, rotation)
-                cam_marker.apply_transform(transform)
-                
-                color = camera_colors[idx % len(camera_colors)]
-                cam_marker.visual.face_colors = color + [255]
-                scene.add_geometry(cam_marker)
-                
-                target_marker = trimesh.primitives.Sphere(radius=radius/30, center=target)
-                target_marker.visual.face_colors = color + [200]
-                scene.add_geometry(target_marker)
-            
-            if args.save:
-                png = scene.save_image(resolution=[720, 480])
-                with open(os.path.join(obj_output_dir, "mesh_visualization.png"), 'wb') as f:
-                    f.write(png)
-            
-            scene.show(resolution=(640, 480))
-        
-        # Combined visualization
-        if (not args.no_show) and show_combined:
-            scene = trimesh.Scene()
-            
-            mesh_copy = mesh.copy()
-            mesh_copy.visual.face_colors = [200, 200, 200, 150]  # translucent gray
-            scene.add_geometry(mesh_copy)
-            
-            com_sphere = trimesh.primitives.Sphere(radius=radius/15, center=center_of_mass)
-            com_sphere.visual.face_colors = [0, 0, 0, 255]
-            scene.add_geometry(com_sphere)
-            
-            for idx, pts in enumerate(all_points_by_camera):
-                color = camera_colors[idx % len(camera_colors)]
-                pc = trimesh.points.PointCloud(pts)
-                pc.colors = np.tile(color + [200], (len(pts), 1))
-                scene.add_geometry(pc)
-            
-            for idx, (cam_pos, target) in enumerate(zip(camera_positions, target_points)):
-                direction = target - cam_pos
-                direction /= np.linalg.norm(direction)
-                
-                cam_marker = trimesh.creation.cone(radius=radius/20, height=radius/10)
-                
-                z_axis = np.array([0, 0, 1])
-                rotation_axis = np.cross(z_axis, direction)
-                if np.linalg.norm(rotation_axis) > 1e-6:
-                    rotation_axis /= np.linalg.norm(rotation_axis)
-                    angle = np.arccos(np.dot(z_axis, direction))
-                    rotation = trimesh.transformations.rotation_matrix(angle, rotation_axis)
-                else:
-                    rotation = np.eye(4)
-                
-                translation = trimesh.transformations.translation_matrix(cam_pos)
-                transform = trimesh.transformations.concatenate_matrices(translation, rotation)
-                cam_marker.apply_transform(transform)
-                
-                color = camera_colors[idx % len(camera_colors)]
-                cam_marker.visual.face_colors = np.tile(color + [255], (len(cam_marker.faces), 1))
-                scene.add_geometry(cam_marker)
-                
-                target_marker = trimesh.primitives.Sphere(radius=radius/30, center=target)
-                target_marker.visual.face_colors = np.tile(color + [200], (len(target_marker.faces), 1))
-                scene.add_geometry(target_marker)
-            
-            if args.save:
-                png = scene.save_image(resolution=[720, 480])
-                with open(os.path.join(obj_output_dir, "visualization.png"), 'wb') as f:
-                    f.write(png)
-            
-            scene.show(resolution=(640, 480))
+        # (Optional: Additional mesh-only or combined visualizations could follow here)
     
     print("Processing complete!")
 

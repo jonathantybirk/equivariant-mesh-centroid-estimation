@@ -1,0 +1,6 @@
+Object: Bath
+Center of mass: [ 2.71965398 -1.85251052  0.02111423]
+Camera distance (radius): 8.366258145367727
+Camera 1 position: [ 8.64877936 -2.82772197  5.84251529]
+Camera 2 position: [ 8.68359763 -1.40308262 -5.82898543]
+Camera 3 position: [-3.38052794 -0.46484775  5.57597228]

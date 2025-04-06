@@ -1,0 +1,6 @@
+Object: Bin
+Center of mass: [-2.12652954e-07 -5.22472278e-01  4.35211379e-07]
+Camera distance (radius): 3.301852133232489
+Camera 1 position: [2.92384873 0.99078243 0.25178419]
+Camera 2 position: [ 1.60057455 -3.41043051 -0.00923029]
+Camera 3 position: [ 0.91762993 -0.18471744 -3.15374402]

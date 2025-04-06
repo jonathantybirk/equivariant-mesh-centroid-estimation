@@ -1,0 +1,6 @@
+Object: Bowl
+Center of mass: [ 8.94307663e-08 -1.56046453e-02  2.46798512e-07]
+Camera distance (radius): 1.2020236644386426
+Camera 1 position: [ 0.43280031  0.623694   -0.92132603]
+Camera 2 position: [-0.4931407  -0.73740543  0.82503157]
+Camera 3 position: [-0.51545921 -0.81368645 -0.7363611 ]

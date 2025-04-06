@@ -1,0 +1,6 @@
+Object: Broom
+Center of mass: [-1.03922208e-08  6.59121024e-01 -5.84866433e-02]
+Camera distance (radius): 5.463181306969837
+Camera 1 position: [4.81058078 2.36538256 1.88916168]
+Camera 2 position: [ 0.1056973  -4.7758432  -0.60285966]
+Camera 3 position: [-2.69551138  5.41013985  0.03310257]
