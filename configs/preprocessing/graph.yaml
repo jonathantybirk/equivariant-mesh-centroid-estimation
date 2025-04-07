@@ -2,3 +2,6 @@ graph:
   k_nn: 10
   node_feature_dim: 16
   edge_attr_dim: 3
+
+preprocessing:
+  skip_graph: false

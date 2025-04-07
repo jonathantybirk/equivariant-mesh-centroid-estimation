@@ -1,7 +1,11 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
+from hydra.utils import get_original_cwd
+
 from src.utils import geometry, mesh, lidar
+from src.preprocessing.pointcloud_to_graph import build_graph_from_pointcloud
 
 def process_mesh(mesh_path, cfg):
     obj_name = os.path.splitext(os.path.basename(mesh_path))[0]
@@ -14,7 +18,9 @@ def process_mesh(mesh_path, cfg):
     # Determine camera distance using max_lidar_distance_factor
     radius = m.bounding_sphere.primitive.radius * cfg.preprocessing.lidar.max_lidar_distance_factor
 
-    obj_output_dir = os.path.join(cfg.preprocessing.lidar.output_dir, obj_name)
+    # Use Hydra's original working directory so paths are relative to your project root
+    original_cwd = get_original_cwd()
+    obj_output_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.output_dir, obj_name)
     os.makedirs(obj_output_dir, exist_ok=True)
 
     np.random.seed(cfg.preprocessing.lidar.seed)
@@ -59,7 +65,7 @@ def process_mesh(mesh_path, cfg):
         np.save(os.path.join(obj_output_dir, "camera_positions.npy"), np.array(camera_positions))
         np.save(os.path.join(obj_output_dir, "center_of_mass.npy"), np.array(com))
 
-        metadata_path = cfg.preprocessing.lidar.metadata_path
+        metadata_path = os.path.join(original_cwd, cfg.preprocessing.lidar.metadata_path)
         header = "object,center_of_mass,camera_distance,num_cameras\n"
         line = f"{obj_name},{com.tolist()},{radius},{len(camera_positions)}\n"
         if not os.path.exists(metadata_path):
@@ -71,62 +77,66 @@ def process_mesh(mesh_path, cfg):
     if cfg.preprocessing.lidar.visualize:
         fig = plt.figure(figsize=(6, 5))
         ax = fig.add_subplot(111, projection='3d')
-        # Six distinct colors: primary and secondary
+        # Colors in binary order: 100, 010, 001, 011, 101, 110
         colors = [
-            (1, 0, 0),    # red
-            (0, 1, 0),    # green
-            (0, 0, 1),    # blue
-            (1, 1, 0),    # yellow
-            (0, 1, 1),    # cyan
-            (1, 0, 1)     # magenta
+            (1, 0, 0),    # red   (100)
+            (0, 1, 0),    # green (010)
+            (0, 0, 1),    # blue  (001)
+            (0, 1, 1),    # cyan  (011)
+            (1, 0, 1),    # magenta (101)
+            (1, 1, 0)     # yellow (110)
         ]
-
         for idx, pts in enumerate(all_points_by_camera):
             color = colors[idx % len(colors)]
-
-            # LiDAR points
             ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=1, color=color, alpha=0.6)
-
-            # Camera
             cam = camera_positions[idx]
             ax.scatter(cam[0], cam[1], cam[2], marker='^', s=100, color=color)
-
-            # Target
             target = target_points[idx]
             ax.scatter(target[0], target[1], target[2], marker='x', s=50, color=color)
-
-            # Dashed line from camera to target
             if getattr(cfg, "show_target_lines", True):
                 line = np.vstack((cam, target))
                 ax.plot(line[:, 0], line[:, 1], line[:, 2], linestyle='--', linewidth=1, color=color)
-
-        # Center of mass
         ax.scatter(com[0], com[1], com[2], marker='o', color='black', s=150)
         ax.set_title(f"{obj_name} - LiDAR Point Cloud View")
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")
-
         if cfg.preprocessing.lidar.export_images:
             vis_dir = os.path.join(obj_output_dir, "visualizations")
             os.makedirs(vis_dir, exist_ok=True)
             vis_path = os.path.join(vis_dir, "pointcloud_view.png")
-            dpi = cfg.preprocessing.lidar.get("dpi", 300) if hasattr(cfg, "dpi") else 300
+            dpi = cfg.preprocessing.lidar.get("dpi", 300) if hasattr(cfg.preprocessing.lidar, "dpi") else 300
             plt.savefig(vis_path, dpi=dpi)
-
         plt.show()
         plt.close()
 
+    # Graph conversion step (runs unconditionally if graph config exists)
+    if hasattr(cfg, "graph"):
+        try:
+            graph_data = build_graph_from_pointcloud(
+                points=all_points,
+                label=np.array(com).reshape(1, 3),
+                k=cfg.preprocessing.graph.k_nn,
+                node_feature_dim=cfg.preprocessing.graph.node_feature_dim
+            )
+        except Exception as e:
+            print(f"Error building graph for {obj_name}: {e}")
+            graph_data = None
+
+        if graph_data is not None:
+            processed_dir = os.path.join(original_cwd, "data", "processed")
+            os.makedirs(processed_dir, exist_ok=True)
+            save_path = os.path.join(processed_dir, f"{obj_name}.pt")
+            torch.save(graph_data, save_path)
+            print(f"Saved graph for {obj_name} to {save_path}")
 
 def process_all_meshes(cfg):
-
-    mesh_dir = cfg.preprocessing.lidar.mesh_dir
+    original_cwd = get_original_cwd()
+    mesh_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.mesh_dir)
     obj_files = [f for f in os.listdir(mesh_dir) if f.endswith(".obj")]
     if not obj_files:
         raise FileNotFoundError(f"No .obj files found in {mesh_dir}")
-
     for obj_file in obj_files:
         mesh_path = os.path.join(mesh_dir, obj_file)
         process_mesh(mesh_path, cfg)
-
-    print("Processing complete.")
+    print("Full preprocessing complete.")
