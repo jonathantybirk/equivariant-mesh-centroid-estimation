@@ -1,0 +1,4 @@
+# equivariant-center-of-mass-estimation/invoke.yaml
+run:
+  env:
+    PYTHONPATH: "."

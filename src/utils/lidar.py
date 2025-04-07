@@ -1,4 +1,3 @@
-# equivariant-center-of-mass-estimation/src/utils/lidar.py
 import numpy as np
 
 def generate_lidar_rays(camera_pos, look_at, h_fov_deg=30, v_fov_deg=30, h_steps=20, v_steps=20):

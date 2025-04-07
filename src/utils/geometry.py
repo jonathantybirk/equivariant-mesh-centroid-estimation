@@ -1,4 +1,3 @@
-# equivariant-center-of-mass-estimation/src/utils/geometry.py
 import numpy as np
 
 def random_point_on_sphere(radius=1.0):

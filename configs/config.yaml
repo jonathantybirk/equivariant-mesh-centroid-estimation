@@ -1,0 +1,4 @@
+defaults:
+  - _self_
+  - preprocessing/lidar
+  - preprocessing/graph

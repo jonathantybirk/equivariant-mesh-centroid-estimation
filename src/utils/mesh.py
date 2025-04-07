@@ -1,4 +1,3 @@
-# equivariant-center-of-mass-estimation/src/utils/mesh.py
 import numpy as np
 import trimesh
 
@@ -9,8 +8,7 @@ def load_mesh(filepath):
     return mesh_obj
 
 def compute_center_of_mass(mesh_obj):
-    mass_props = mesh_obj.mass_properties
-    return mass_props.center_mass
+    return mesh_obj.mass_properties.center_mass
 
 def random_point_on_mesh(mesh_obj):
     triangles = mesh_obj.triangles
@@ -23,19 +21,65 @@ def random_point_on_mesh(mesh_obj):
     w = 1 - u - v
     return u * triangle[0] + v * triangle[1] + w * triangle[2]
 
-def select_visible_target_point(mesh_obj, camera_pos, num_attempts=100):
-    # Try to select a visible point by casting a random ray from the camera.
-    for _ in range(num_attempts):
-        random_dir = np.random.randn(3)
-        random_dir = random_dir / np.linalg.norm(random_dir)
-        origins = np.array([camera_pos])
-        directions = np.array([random_dir])
-        locations, index_ray, _ = mesh_obj.ray.intersects_location(
-            ray_origins=origins,
-            ray_directions=directions
+def sample_surface_point(mesh_obj):
+    areas = mesh_obj.area_faces
+    tri_idx = np.random.choice(len(areas), p=areas / areas.sum())
+    tri = mesh_obj.triangles[tri_idx]
+    u = np.random.rand()
+    v = np.random.rand() * (1 - u)
+    w = 1 - u - v
+    point = u * tri[0] + v * tri[1] + w * tri[2]
+    return point, tri_idx
+
+def is_visible_from_camera(mesh_obj, point, tri_idx, camera_pos):
+    ray_dir = point - camera_pos
+    ray_dir /= np.linalg.norm(ray_dir)
+
+    origins = np.array([camera_pos])
+    directions = np.array([ray_dir])
+
+    locations, index_ray, index_tri = mesh_obj.ray.intersects_location(
+        ray_origins=origins,
+        ray_directions=directions,
+        multiple_hits=False
+    )
+
+    if len(locations) == 0:
+        return False
+
+    hit_point = locations[0]
+    hit_tri = index_tri[0]
+
+    if hit_tri != tri_idx:
+        return False  # occluded
+
+    normal = mesh_obj.face_normals[tri_idx]
+    view_dir = camera_pos - hit_point
+    view_dir /= np.linalg.norm(view_dir)
+
+    return np.dot(normal, view_dir) > 0  # front-facing
+
+def sample_visible_target_and_camera(mesh_obj, radius, max_attempts=200):
+    """
+    Sample a visible target point on a triangle and a camera position that can see it.
+    """
+    for _ in range(max_attempts):
+        tri_idx = np.random.choice(
+            len(mesh_obj.area_faces),
+            p=mesh_obj.area_faces / mesh_obj.area_faces.sum()
         )
-        if len(locations) > 0:
-            distances = np.linalg.norm(locations - camera_pos, axis=1)
-            return locations[np.argmin(distances)]
-    print("Warning: Could not find a visible target point; using a random point on the mesh.")
-    return random_point_on_mesh(mesh_obj)
+        tri = mesh_obj.triangles[tri_idx]
+
+        # Sample a point inside the triangle using barycentric coordinates
+        u = np.random.rand()
+        v = np.random.rand() * (1 - u)
+        w = 1 - u - v
+        point = u * tri[0] + v * tri[1] + w * tri[2]
+
+        cam_dir = trimesh.unitize(np.random.randn(3))
+        camera_pos = mesh_obj.centroid + radius * cam_dir
+
+        if is_visible_from_camera(mesh_obj, point, tri_idx, camera_pos):
+            return point, camera_pos
+
+    raise RuntimeError("Failed to find visible surface point from camera.")
