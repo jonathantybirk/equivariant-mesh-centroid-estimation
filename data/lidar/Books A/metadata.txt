@@ -1,6 +1,0 @@
-Object: Books A
-Center of mass: [-0.02050095  0.01741272  0.00998454]
-Camera distance (radius): 2.9154870213903443
-Camera 1 position: [-0.15325608 -2.78083221  0.81761438]
-Camera 2 position: [ 0.4665946   2.72149122 -0.9650857 ]
-Camera 3 position: [ 2.88093153 -0.16336876 -0.21153796]

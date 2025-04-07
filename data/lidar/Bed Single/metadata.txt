@@ -1,6 +1,0 @@
-Object: Bed Single
-Center of mass: [-0.00889922 -0.09659358  1.06215552]
-Camera distance (radius): 12.568208319595058
-Camera 1 position: [ 9.74374744 -7.3136555   4.34236293]
-Camera 2 position: [ 6.30232863 10.37430487 -1.85135595]
-Camera 3 position: [-8.89392886 -8.59329781 -1.54976447]

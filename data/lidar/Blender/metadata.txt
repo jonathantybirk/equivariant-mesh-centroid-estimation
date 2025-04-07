@@ -1,6 +1,0 @@
-Object: Blender
-Center of mass: [-0.23608212 -0.26208962 -0.00038985]
-Camera distance (radius): 2.8578108878349346
-Camera 1 position: [1.83723965 1.23806181 1.27160291]
-Camera 2 position: [-1.27532318 -0.32822989  2.66094188]
-Camera 3 position: [ 1.43515656  0.85582693 -2.03122882]

@@ -1,0 +1,13 @@
+README.md
+pyproject.toml
+src/__init__.py
+src/equivariant_center_of_mass_estimation.egg-info/PKG-INFO
+src/equivariant_center_of_mass_estimation.egg-info/SOURCES.txt
+src/equivariant_center_of_mass_estimation.egg-info/dependency_links.txt
+src/equivariant_center_of_mass_estimation.egg-info/top_level.txt
+src/preprocessing/__init__.py
+src/preprocessing/obj_to_pc.py
+src/utils/__init__.py
+src/utils/geometry.py
+src/utils/lidar.py
+src/utils/mesh.py
