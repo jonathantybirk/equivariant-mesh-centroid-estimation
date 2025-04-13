@@ -1,11 +1,9 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import torch
 from hydra.utils import get_original_cwd
 
 from src.utils import geometry, mesh, lidar
-from src.preprocessing.pointcloud_to_graph import build_graph_from_pointcloud
 
 def process_mesh(mesh_path, cfg):
     obj_name = os.path.splitext(os.path.basename(mesh_path))[0]
@@ -110,26 +108,6 @@ def process_mesh(mesh_path, cfg):
         plt.show()
         plt.close()
 
-    # Graph conversion step (runs unconditionally if graph config exists)
-    if hasattr(cfg, "graph"):
-        try:
-            graph_data = build_graph_from_pointcloud(
-                points=all_points,
-                label=np.array(com).reshape(1, 3),
-                k=cfg.preprocessing.graph.k_nn,
-                node_feature_dim=cfg.preprocessing.graph.node_feature_dim
-            )
-        except Exception as e:
-            print(f"Error building graph for {obj_name}: {e}")
-            graph_data = None
-
-        if graph_data is not None:
-            processed_dir = os.path.join(original_cwd, "data", "processed")
-            os.makedirs(processed_dir, exist_ok=True)
-            save_path = os.path.join(processed_dir, f"{obj_name}.pt")
-            torch.save(graph_data, save_path)
-            print(f"Saved graph for {obj_name} to {save_path}")
-
 def process_all_meshes(cfg):
     original_cwd = get_original_cwd()
     mesh_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.mesh_dir)
@@ -139,4 +117,4 @@ def process_all_meshes(cfg):
     for obj_file in obj_files:
         mesh_path = os.path.join(mesh_dir, obj_file)
         process_mesh(mesh_path, cfg)
-    print("Full preprocessing complete.")
+    print("Point cloud generation complete.")

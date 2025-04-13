@@ -11,7 +11,7 @@ from invoke import task
 )
 def preprocess(ctx, save=False, no_visualize=False, num_cameras=3, h_steps=40, v_steps=40):
     """
-    Run full preprocessing: generate point clouds from meshes and convert them to graph data.
+    Run full preprocessing: generate point clouds from meshes and then convert them to graph data.
     """
     cmd = (
         f"python3 scripts/preprocess.py "
@@ -22,3 +22,4 @@ def preprocess(ctx, save=False, no_visualize=False, num_cameras=3, h_steps=40, v
         f"preprocessing.lidar.v_steps={v_steps}"
     )
     ctx.run(cmd, pty=True)
+    
