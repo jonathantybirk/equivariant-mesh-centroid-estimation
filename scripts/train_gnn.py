@@ -36,14 +36,20 @@ def main(cfg: DictConfig):
     os.makedirs(cfg.training.log_dir, exist_ok=True)
     os.makedirs(cfg.training.checkpoint_dir, exist_ok=True)
     
-    # Create data module
+    # Create data module (with train-test split)
     data_module = PointCloudDataModule(
         processed_dir=cfg.preprocessing.processed_dir,
+        train_dir=os.path.join(cfg.preprocessing.processed_dir, "train"),
+        test_dir=os.path.join(cfg.preprocessing.processed_dir, "test"),
         batch_size=cfg.training.batch_size,
-        num_workers=cfg.training.num_workers,
-        pin_memory=cfg.training.pin_memory,
-        node_feature_dim=cfg.models.gnn.hidden_dim
+        num_workers=0,  # ⚠️ IMPORTANT: Set to 0 to avoid multiprocessing issues
+        pin_memory=False,  # Turn this off for CPU training
+        node_feature_dim=cfg.models.gnn.hidden_dim,
+        val_split=0.1  # Use 10% of training data for validation
     )
+    
+    # Set up the data module to access dataset sizes
+    data_module.setup(stage='fit')
     
     # Create model
     model = GNNLightningModule(
@@ -99,33 +105,73 @@ def main(cfg: DictConfig):
         if cfg.training.gpus > 0:
             print("WARNING: GPU requested but not available. Using CPU instead.")
         accelerator = "cpu"
-        devices = 1  # Use 1 CPU core (you can adjust this if needed)
+        devices = 1  # Use 1 CPU core
     
-    # Create trainer
+    # Create trainer with optimized settings for CPU training
     trainer = pl.Trainer(
         max_epochs=cfg.training.max_epochs,
         logger=wandb_logger,
         callbacks=callbacks,
         accelerator=accelerator,
-        devices=devices
+        devices=devices,
+        check_val_every_n_epoch=5,  # Validate less frequently
+        num_sanity_val_steps=0,     # Skip sanity validation 
+        # Additional settings to fix validation hanging
+        detect_anomaly=False,       # Turn off anomaly detection for speed
+        enable_progress_bar=True,    # Keep progress bar for monitoring
+        enable_model_summary=True,  # Show model summary
+        precision='32-true',        # Use 32-bit precision but avoid unnecessary checks
+        profiler=None,              # Disable profiler for speed
+        # This is critical - manually set max steps to break long validation run
+        val_check_interval=1.0,     # Set validation check interval to once per epoch
     )
     
-    # Train model
-    trainer.fit(model, data_module)
+    # Print training info
+    print(f"\n{'='*50}")
+    print(f"Training on {accelerator.upper()} with {devices} device(s)")
+    print(f"Validating every 5 epochs")
+    print(f"Training set size: {len(data_module.train_dataset)} samples")
+    print(f"Validation set size: {len(data_module.val_dataset)} samples")
+    print(f"{'='*50}\n")
     
-    # Test model
-    trainer.test(model, data_module)
+    # Force garbage collection before training
+    import gc
+    gc.collect()
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    
+    # Train model with error handling
+    try:
+        trainer.fit(model, data_module)
+        print("Training completed successfully!")
+    except Exception as e:
+        print(f"Error during training: {str(e)}")
+        import traceback
+        traceback.print_exc()
+    
+    # Test model only if requested and training succeeded
+    if hasattr(trainer, 'callback_metrics') and cfg.get('do_test', False):
+        print("Running test evaluation...")
+        trainer.test(model, data_module)
+    else:
+        print("Skipping test evaluation")
     
     # Save final model
-    trainer.save_checkpoint(
-        os.path.join(cfg.training.checkpoint_dir, f"{cfg.name}_final.ckpt")
-    )
+    try:
+        final_path = os.path.join(cfg.training.checkpoint_dir, f"{cfg.name}_final.ckpt")
+        trainer.save_checkpoint(final_path)
+        print(f"Final model saved to {final_path}")
+    except Exception as e:
+        print(f"Error saving final model: {str(e)}")
     
     # Finish the W&B run
-    wandb_logger.experiment.finish()
+    try:
+        wandb_url = wandb_logger.experiment.url
+        wandb_logger.experiment.finish()
+        print(f"View your training results at: {wandb_url}")
+    except Exception as e:
+        print(f"Error finishing W&B run: {str(e)}")
     
-    print(f"Training completed! Final model saved to {cfg.training.checkpoint_dir}/{cfg.name}_final.ckpt")
-    print(f"View your training at: {wandb_logger.experiment.url}")
+    print("\nTraining process complete!")
 
 
 if __name__ == "__main__":

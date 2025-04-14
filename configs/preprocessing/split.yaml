@@ -1,0 +1,4 @@
+split:
+  train_ratio: 0.8
+  test_ratio: 0.2
+  random_seed: 42

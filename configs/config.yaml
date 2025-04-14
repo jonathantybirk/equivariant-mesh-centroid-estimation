@@ -8,4 +8,5 @@ defaults:
   - preprocessing/_preprocessing
   - preprocessing/lidar
   - preprocessing/graph
+  - preprocessing/split
   - _self_

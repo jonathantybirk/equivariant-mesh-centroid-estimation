@@ -24,6 +24,9 @@ def preprocess(ctx, save=False, no_visualize=False, num_cameras=3, h_steps=40, v
         f"preprocessing.lidar.v_steps={v_steps}"
     )
     ctx.run(cmd)
+    ctx.run("python scripts/split_dataset.py")
+
+# Add fast option to the train task
 
 @task(
     help={
@@ -34,9 +37,12 @@ def preprocess(ctx, save=False, no_visualize=False, num_cameras=3, h_steps=40, v
         "name": "Experiment name",
         "patience": "Early stopping patience",
         "workers": "Number of data loading workers",
+        "test": "Run test evaluation after training",
+        "fast": "Use faster training mode (less validation)"
     }
 )
-def train(ctx, batch_size=32, lr=0.001, epochs=100, gpus=1, name="gnn_baseline", patience=10, workers=4):
+def train(ctx, batch_size=32, lr=0.001, epochs=100, gpus=1, name="gnn_baseline", 
+          patience=10, workers=4, test=False, fast=False):
     """
     Train the GNN model for center of mass estimation.
     """
@@ -54,63 +60,25 @@ def train(ctx, batch_size=32, lr=0.001, epochs=100, gpus=1, name="gnn_baseline",
         f"training.gpus={gpus} "
         f"training.patience={patience} "
         f"training.num_workers={workers} "
-        f"name={name}"
+        f"name={name} "
+        f"+do_test={str(test).lower()} "
+        f"+fast_train={str(fast).lower()}"
     )
     ctx.run(cmd)
 
 @task(
     help={
         "name": "Experiment name (should match a trained model)",
+        "checkpoint_path": "Specific checkpoint to evaluate (optional)"
     }
 )
-def evaluate(ctx, name="gnn_baseline"):
+def evaluate(ctx, name="gnn_baseline", checkpoint_path=None):
     """
     Evaluate a trained GNN model.
     """
     os.makedirs("evaluation_results", exist_ok=True)
     
     cmd = f"python scripts/evaluate_gnn.py name={name}"
+    if checkpoint_path:
+        cmd += f" +checkpoint_path={checkpoint_path}"
     ctx.run(cmd)
-
-@task(
-    help={
-        "directory": "Directory to clean (logs, checkpoints, visualizations, or evaluation)",
-    }
-)
-def clean(ctx, directory="all"):
-    """
-    Clean generated files (logs, checkpoints, visualizations).
-    """
-    # Use appropriate command based on OS
-    rm_cmd = "rm -rf" if platform.system() != "Windows" else "rmdir /s /q"
-    
-    if directory == "all" or directory == "logs":
-        ctx.run(f"{rm_cmd} logs", warn=True)
-    if directory == "all" or directory == "checkpoints":
-        ctx.run(f"{rm_cmd} checkpoints", warn=True)
-    if directory == "all" or directory == "visualizations":
-        ctx.run(f"{rm_cmd} visualizations", warn=True)
-    if directory == "all" or directory == "evaluation":
-        ctx.run(f"{rm_cmd} evaluation_results", warn=True)
-    
-    print(f"Cleaned {directory} directories")
-
-@task
-def setup(ctx):
-    """
-    Create necessary directories for the project.
-    """
-    directories = [
-        "src/model",
-        "src/data",
-        "scripts",
-        "logs",
-        "checkpoints",
-        "visualizations",
-        "evaluation_results"
-    ]
-    
-    for directory in directories:
-        os.makedirs(directory, exist_ok=True)
-        
-    print("Project directories created successfully")

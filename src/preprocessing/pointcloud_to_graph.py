@@ -10,18 +10,16 @@ def build_graph_from_pointcloud(points: np.ndarray, target: np.ndarray, k: int, 
     
     Args:
         points: (N, 3) array of 3D points.
-        target: (1, 3) array representing the object's center of mass.
+        target: (3,) array representing the object's center of mass.
         k: Number of nearest neighbors for each node.
         node_feature_dim: Dimensionality of the node features.
         
     Returns:
-        A dictionary with:
-          - "point_cloud": Tensor of shape (N, 3)
-          - "node_features": Tensor of shape (N, node_feature_dim)
-          - "edge_index": Tensor of shape (2, E)
-          - "edge_attr": Tensor of shape (E, 3)
-          - "target": Tensor of shape (1, 3)
+        A dictionary with graph data.
     """
+    # Ensure target has shape (3,) - remove extra dimensions
+    target = target.reshape(-1)  # Flattens to (3,)
+    
     N = points.shape[0]
     node_features = torch.ones((N, node_feature_dim), dtype=torch.float32)
     
@@ -39,14 +37,13 @@ def build_graph_from_pointcloud(points: np.ndarray, target: np.ndarray, k: int, 
     relative = points[receivers] - points[senders]
     edge_attr = torch.tensor(relative, dtype=torch.float32)
     
-    graph_data = {
+    return {
         "point_cloud": torch.tensor(points, dtype=torch.float32),
         "node_features": node_features,
         "edge_index": edge_index,
         "edge_attr": edge_attr,
-        "target": torch.tensor(target, dtype=torch.float32)
+        "target": torch.tensor(target, dtype=torch.float32)  # Now shape (3,)
     }
-    return graph_data
 
 def convert_all_pointclouds(cfg):
     """
@@ -74,9 +71,11 @@ def convert_all_pointclouds(cfg):
         
         points = np.load(combined_path)
         com = np.load(com_path)
+        
+        # Don't reshape the target - pass it as (3,)
         graph_data = build_graph_from_pointcloud(
             points=points,
-            target=com.reshape(1, 3),
+            target=com,  # No reshape, let the function handle it
             k=cfg.preprocessing.graph.k_nn,
             node_feature_dim=cfg.preprocessing.graph.node_feature_dim
         )
