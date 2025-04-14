@@ -1,5 +1,7 @@
 ## Get started
+
 `invoke preprocess --save --no-visualize`
+
 `invoke train`
 
 ## Weights & Biases Setup
