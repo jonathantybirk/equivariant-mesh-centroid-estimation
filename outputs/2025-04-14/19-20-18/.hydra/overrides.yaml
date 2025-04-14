@@ -1,0 +1,7 @@
+- training.batch_size=32
+- training.lr=0.001
+- training.max_epochs=100
+- training.gpus=1
+- training.patience=10
+- training.num_workers=4
+- name=gnn_baseline

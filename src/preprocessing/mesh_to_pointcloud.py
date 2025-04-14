@@ -21,6 +21,9 @@ def process_mesh(mesh_path, cfg):
     obj_output_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.output_dir, obj_name)
     os.makedirs(obj_output_dir, exist_ok=True)
 
+    output_dir = os.path.join(get_original_cwd(), cfg.preprocessing.lidar.output_dir, obj_name)
+    os.makedirs(output_dir, exist_ok=True)
+
     np.random.seed(cfg.preprocessing.lidar.seed)
 
     camera_positions = []
@@ -64,6 +67,7 @@ def process_mesh(mesh_path, cfg):
         np.save(os.path.join(obj_output_dir, "center_of_mass.npy"), np.array(com))
 
         metadata_path = os.path.join(original_cwd, cfg.preprocessing.lidar.metadata_path)
+        os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
         header = "object,center_of_mass,camera_distance,num_cameras\n"
         line = f"{obj_name},{com.tolist()},{radius},{len(camera_positions)}\n"
         if not os.path.exists(metadata_path):

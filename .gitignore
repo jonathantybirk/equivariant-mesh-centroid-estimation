@@ -1,0 +1,17 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Keep only mesh data
+/data/*
+!/data/meshes/
+
+# Training artifacts
+/logs/
+/checkpoints/
+
+# Weights & Biases
+/wandb/
+
+# Hydra outputs
+/.hydra/

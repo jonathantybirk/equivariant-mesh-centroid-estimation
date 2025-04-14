@@ -1,4 +1,11 @@
+name: gnn_baseline
+description: Baseline GNN model for center of mass estimation
+
 defaults:
-  - _self_
+  - models/_models
+  - models/gnn
+  - training/_training
+  - preprocessing/_preprocessing
   - preprocessing/lidar
   - preprocessing/graph
+  - _self_

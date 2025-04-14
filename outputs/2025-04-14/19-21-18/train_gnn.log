@@ -1,0 +1,10 @@
+[2025-04-14 19:21:19,155][src.data.datamodule][INFO] - Found 9 object files
+[2025-04-14 19:21:19,156][src.data.datamodule][INFO] - Loading data from data/processed\Alarm Clock.pt
+[2025-04-14 19:21:19,158][src.data.datamodule][INFO] - Loading data from data/processed\Bath.pt
+[2025-04-14 19:21:19,160][src.data.datamodule][INFO] - Loading data from data/processed\Bed Double.pt
+[2025-04-14 19:21:19,161][src.data.datamodule][INFO] - Loading data from data/processed\Bed Single.pt
+[2025-04-14 19:21:19,162][src.data.datamodule][INFO] - Loading data from data/processed\Bin.pt
+[2025-04-14 19:21:19,164][src.data.datamodule][INFO] - Loading data from data/processed\Blender.pt
+[2025-04-14 19:21:19,166][src.data.datamodule][INFO] - Loading data from data/processed\Books A.pt
+[2025-04-14 19:21:19,167][src.data.datamodule][INFO] - Loading data from data/processed\Books B.pt
+[2025-04-14 19:21:19,169][src.data.datamodule][INFO] - Loading data from data/processed\Bowl.pt

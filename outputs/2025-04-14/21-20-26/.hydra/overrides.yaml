@@ -1,0 +1,5 @@
+- preprocessing.lidar.save=true
+- preprocessing.lidar.visualize=false
+- preprocessing.lidar.num_cameras=3
+- preprocessing.lidar.h_steps=40
+- preprocessing.lidar.v_steps=40
