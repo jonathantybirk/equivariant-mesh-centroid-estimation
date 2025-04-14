@@ -1,3 +1,10 @@
+outputs/*
+!outputs/.gitkeep
+data/pointclouds/*
+!data/pointclouds/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+
 # Python cache
 __pycache__/
 *.py[cod]
