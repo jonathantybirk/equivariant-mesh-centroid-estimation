@@ -9,3 +9,6 @@ tqdm
 pandas
 invoke
 rtree
+scipy
+torch-geometric
+wandb
