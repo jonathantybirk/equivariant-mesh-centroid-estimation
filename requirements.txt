@@ -8,3 +8,4 @@ omegaconf
 tqdm
 pandas
 invoke
+rtree
