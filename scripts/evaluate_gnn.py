@@ -139,6 +139,9 @@ def main(cfg: DictConfig):
     predictions = np.array(predictions)
     targets = np.array(targets)
     
+    # Always reshape targets to ensure consistent (n_samples, 3) shape
+    targets = targets.reshape(targets.shape[0], -1)  # Will work for both (n,3) and (n,1,3)
+    
     # Calculate statistics
     stats = {
         'mean_error': errors.mean(),
@@ -160,21 +163,14 @@ def main(cfg: DictConfig):
     print(f"MSE: {stats['mse']:.4f}")
     print(f"RMSE: {stats['rmse']:.4f}")
     
+    # Print shapes for debugging
+    print(f"Debug - Predictions shape: {predictions.shape}, Targets shape: {targets.shape}")
+    
     # Save results to CSV
     pd.DataFrame(stats, index=[0]).to_csv(
         os.path.join(results_dir, 'error_statistics.csv'), 
         index=False
     )
-    
-    # Fix for the detailed results section
-    
-    # Print shapes for debugging
-    print(f"Debug - Predictions shape: {predictions.shape}, Targets shape: {targets.shape}")
-    
-    # Normalize target data shape - simplify by flattening to (n_samples, 3)
-    if len(targets.shape) == 3:  # If shape is (n_samples, 1, 3)
-        targets = targets.reshape(targets.shape[0], -1)  # Reshape to (n_samples, 3)
-        print(f"Normalized targets shape: {targets.shape}")
     
     # Save detailed results with simplified data handling
     detailed_results = pd.DataFrame({
@@ -222,11 +218,9 @@ def main(cfg: DictConfig):
             point_cloud = data.pos.cpu().numpy()
             true_com = data.y.cpu().numpy()
             
-            # Ensure we have flattened arrays if needed
-            if len(pred_com.shape) > 1:
-                pred_com = pred_com.reshape(-1)
-            if len(true_com.shape) > 1:
-                true_com = true_com.reshape(-1)
+            # Always reshape to ensure consistent (3,) shape
+            pred_com = pred_com.reshape(-1)  # Reshape to (3,)
+            true_com = true_com.reshape(-1)  # Reshape to (3,)
             
             # Print shapes for debugging
             print(f"Sample {idx} - Point cloud: {point_cloud.shape}, True COM: {true_com.shape}, Pred COM: {pred_com.shape}")

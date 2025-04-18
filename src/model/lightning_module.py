@@ -113,7 +113,7 @@ class GNNLightningModule(pl.LightningModule):
         with torch.no_grad():
             preds = self(val_batch)
         
-        # Create visualization directory
+        # Ensure visualization directory exists    
         os.makedirs('visualizations', exist_ok=True)
         
         # Visualize 3 examples

@@ -7,6 +7,10 @@ data/processed/*
 visualizations/*
 !visualizations/.gitkeep
 
+# Evaluation results
+evaluation_results/*
+!evaluation_results/.gitkeep
+
 # Python cache
 __pycache__/
 *.py[cod]
@@ -19,8 +23,15 @@ __pycache__/
 /logs/
 /checkpoints/
 
-# Weights & Biases
 /wandb/
 
-# Hydra outputs
 /.hydra/
+
+# IDE specific files
+.vscode/
+.idea/
+*.iml
+
+# OS specific files
+.DS_Store
+Thumbs.db

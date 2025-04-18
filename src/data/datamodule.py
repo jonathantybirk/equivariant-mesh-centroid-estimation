@@ -71,7 +71,9 @@ class PointCloudGraphDataset(Dataset):
         node_features = data['node_features']
         edge_index = data['edge_index']
         edge_attr = data['edge_attr']
-        com = data['target']
+        com = data['target']  # This should consistently be [1, 3] from preprocessing
+        
+        # No reshape needed - the preprocessing ensures consistent [1, 3] shape
         
         # Create PyG Data object
         graph = Data(
@@ -79,7 +81,7 @@ class PointCloudGraphDataset(Dataset):
             edge_index=edge_index,    # Graph connectivity
             edge_attr=edge_attr,      # Edge attributes (3D vector differences)
             pos=point_cloud,          # Original point cloud positions
-            y=com                     # Target center of mass
+            y=com                     # Target center of mass [1, 3]
         )
         
         # Add object name if available

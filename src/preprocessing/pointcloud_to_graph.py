@@ -37,12 +37,17 @@ def build_graph_from_pointcloud(points: np.ndarray, target: np.ndarray, k: int, 
     relative = points[receivers] - points[senders]
     edge_attr = torch.tensor(relative, dtype=torch.float32)
     
+    # For PyTorch Geometric batching to work correctly with graph-level targets,
+    # we need to ensure the target is properly formatted with an explicit batch dimension
+    # Convert target to tensor and reshape to [1, 3] to indicate it's a graph-level attribute
+    target_tensor = torch.tensor(target, dtype=torch.float32).view(1, 3)
+    
     return {
         "point_cloud": torch.tensor(points, dtype=torch.float32),
         "node_features": node_features,
         "edge_index": edge_index,
         "edge_attr": edge_attr,
-        "target": torch.tensor(target, dtype=torch.float32)  # Now shape (3,)
+        "target": target_tensor  # Now shape (1, 3) for proper PyG batching
     }
 
 def convert_all_pointclouds(cfg):
