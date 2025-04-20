@@ -7,6 +7,14 @@ data/processed/*
 visualizations/*
 !visualizations/.gitkeep
 
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
 # Evaluation results
 evaluation_results/*
 !evaluation_results/.gitkeep
