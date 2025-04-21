@@ -38,11 +38,12 @@ def preprocess(ctx, save=False, no_visualize=False, num_cameras=3, h_steps=40, v
         "patience": "Early stopping patience",
         "workers": "Number of data loading workers",
         "test": "Run test evaluation after training",
-        "fast": "Use faster training mode (less validation)"
+        "fast": "Use faster training mode (less validation)",
+        "model_module": "Python path to the LightningModule class (e.g., src.model.SE3_equivariant.GNNLightningModule)"
     }
 )
 def train(ctx, batch_size=32, lr=0.001, epochs=100, gpus=1, name="gnn_baseline", 
-          patience=10, workers=4, test=False, fast=False):
+          patience=10, workers=4, test=False, fast=False, model_module=None):
     """
     Train the GNN model for center of mass estimation.
     """
@@ -64,15 +65,20 @@ def train(ctx, batch_size=32, lr=0.001, epochs=100, gpus=1, name="gnn_baseline",
         f"+do_test={str(test).lower()} "
         f"+fast_train={str(fast).lower()}"
     )
+    # Add model override if provided (no special quoting/escaping needed now)
+    if model_module:
+        cmd += f" model.module_path={model_module}"
+        
     ctx.run(cmd)
 
 @task(
     help={
         "name": "Experiment name (should match a trained model)",
-        "checkpoint_path": "Specific checkpoint to evaluate (optional)"
+        "checkpoint_path": "Specific checkpoint to evaluate (optional)",
+        "model_module": "Python path to the LightningModule class (e.g., src.model.SE3_equivariant.GNNLightningModule)"
     }
 )
-def evaluate(ctx, name="gnn_baseline", checkpoint_path=None):
+def evaluate(ctx, name="gnn_baseline", checkpoint_path=None, model_module=None):
     """
     Evaluate a trained GNN model.
     """
@@ -81,4 +87,8 @@ def evaluate(ctx, name="gnn_baseline", checkpoint_path=None):
     cmd = f"python scripts/evaluate_gnn.py name={name}"
     if checkpoint_path:
         cmd += f" +checkpoint_path={checkpoint_path}"
+    # Add model override if provided (no special quoting/escaping needed now)
+    if model_module:
+        cmd += f" model.module_path={model_module}"
+        
     ctx.run(cmd)

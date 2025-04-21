@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+import importlib
 
 # Change working directory to the project root
 def find_project_root(current: Path, markers=(".git", "pyproject.toml")):
@@ -21,7 +22,13 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, LearningRateMonitor
 
 from src.data.datamodule import PointCloudDataModule
-from src.model.lightning_module import GNNLightningModule
+
+
+def get_class(class_path: str):
+    """Helper function to dynamically import a class."""
+    module_name, class_name = class_path.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
 
 
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
@@ -29,8 +36,8 @@ def main(cfg: DictConfig):
     """Main training function using Hydra for configuration"""
     print(OmegaConf.to_yaml(cfg))
     
-    # Set seeds for reproducibility
-    pl.seed_everything(cfg.models.models.seed)
+    # Set seeds for reproducibility using the root-level seed
+    pl.seed_everything(cfg.seed)
     
     # Create directories if they don't exist
     os.makedirs(cfg.training.log_dir, exist_ok=True)
@@ -51,15 +58,16 @@ def main(cfg: DictConfig):
     # Set up the data module to access dataset sizes
     data_module.setup(stage='fit')
     
-    # Create model
-    model = GNNLightningModule(
+    # Dynamically get the model class
+    ModelClass = get_class(cfg.model.module_path)
+    print(f"Using model class: {ModelClass.__name__} from {cfg.model.module_path}")
+
+    # Create model instance using the dynamically imported class
+    model = ModelClass(
         hidden_dim=cfg.models.gnn.hidden_dim,
         message_passing_steps=cfg.models.gnn.message_passing_steps,
         message_mlp_dims=cfg.models.gnn.message_mlp_dims,
-        update_mlp_dims=cfg.models.gnn.update_mlp_dims,
-        final_mlp_dims=cfg.models.gnn.final_mlp_dims,
-        lr=cfg.training.lr,
-        seed=cfg.models.models.seed
+        lr=cfg.training.lr
     )
     
     # Set up Weights & Biases logger (user-agnostic)

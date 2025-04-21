@@ -1,6 +1,7 @@
 gnn:
   hidden_dim: 16
   message_passing_steps: 3
-  message_mlp_dims: [70, 140, 20]
-  update_mlp_dims: [70]
-  final_mlp_dims: [64, 32]
+  message_mlp_dims:
+    - 70
+    - 140
+    - 20

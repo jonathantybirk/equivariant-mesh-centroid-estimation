@@ -39,7 +39,7 @@ This project implements a Graph Neural Network (GNN) approach for equivariant ce
    uv pip install -r requirements.txt
    ```
 
-4. Create necessary project directories:
+4. Create necessary project directories (not currently implemented): 
    ```bash
    invoke setup
    ```

@@ -151,3 +151,4 @@ class GNNLayer(MessagePassing):
         """Update node features with aggregated messages."""
         inputs = torch.cat([x, aggr_out], dim=-1)
         return self.update_mlp(inputs)
+    

@@ -1,6 +1,8 @@
 import os
 import sys
 from pathlib import Path
+import glob
+import importlib
 
 # Change working directory to the project root
 def find_project_root(current: Path, markers=(".git", "pyproject.toml")):
@@ -21,10 +23,15 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
 import pandas as pd
-import glob
 
 from src.data.datamodule import PointCloudDataModule
-from src.model.lightning_module import GNNLightningModule
+
+
+def get_class(class_path: str):
+    """Helper function to dynamically import a class."""
+    module_name, class_name = class_path.rsplit('.', 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)
 
 
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
@@ -60,8 +67,12 @@ def main(cfg: DictConfig):
         raise FileNotFoundError(f"Checkpoint not found at {checkpoint_path}")
     
     try:
-        # Load model from checkpoint
-        model = GNNLightningModule.load_from_checkpoint(checkpoint_path)
+        # Dynamically get the model class
+        ModelClass = get_class(cfg.model.module_path)
+        print(f"Using model class: {ModelClass.__name__} from {cfg.model.module_path}")
+        
+        # Load model from checkpoint using the dynamically imported class
+        model = ModelClass.load_from_checkpoint(checkpoint_path)
         model.eval()
         print("Model loaded successfully")
     except Exception as e:
