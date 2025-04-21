@@ -15,6 +15,9 @@ env/
 # Environment variables
 .env
 
+# logs
+**.log
+
 # Evaluation results
 evaluation_results/*
 !evaluation_results/.gitkeep
