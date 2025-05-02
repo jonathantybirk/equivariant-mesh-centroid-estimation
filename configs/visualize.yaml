@@ -3,7 +3,7 @@
 # Path to the trained model checkpoint
 # NOTE: Using underscores instead of equals for compatibility if overriding via CLI.
 # Ensure the actual file exists at checkpoints/se3_equivariant_v2-epoch=24-val_loss=0.1151.ckpt
-checkpoint_path: checkpoints\se3_equivariant_v2_final.ckpt #checkpoints\se3_equivariant_v2-epoch=24-val_loss=0.1151.ckpt
+checkpoint_path: checkpoints\se3_equivariant_final.ckpt #checkpoints\se3_equivariant_v2-epoch=24-val_loss=0.1151.ckpt
 
 # Python path to the LightningModule class used for training
 model:
