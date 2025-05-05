@@ -133,12 +133,12 @@ def main():
         
         # Determine model module path based on model name - FIXED to use the correct classes
         if model_name == 'gnn_baseline':
-            model_module = 'src.model.lightning_module'  # Changed to use Lightning module wrapper
+            model_module = 'src.model.lightning_module.GNNLightningModule'  # Include the class name
         elif model_name == 'se3_equivariant':
-            model_module = 'src.model.SE3_equivariant'  # SE3 model already has Lightning integrated
+            model_module = 'src.model.SE3_equivariant.SE3EquivariantModel'  # Include the class name
         else:
             logger.warning(f"Unknown model type {model_name}, assuming default module")
-            model_module = 'src.model.lightning_module'
+            model_module = 'src.model.lightning_module.GNNLightningModule'
         
         # Fix path for Hydra - convert backslashes to forward slashes
         checkpoint_path = best_checkpoint.replace('\\', '/')
