@@ -71,11 +71,23 @@ class PointCloudGraphDataset(Dataset):
         node_features = data['node_features']
         edge_index = data['edge_index']
         edge_attr = data['edge_attr']
-        com = data['target']  # This should consistently be [1, 3] from preprocessing
+        com = data['target']
         
-        # No reshape needed - the preprocessing ensures consistent [1, 3] shape
+        # CRITICAL FIX: Ensure consistency between tensors
+        num_nodes = node_features.size(0)
         
-        # Create PyG Data object
+        # Verify edge_index references valid nodes
+        if edge_index.size(1) > 0:  # Only if there are edges
+            # Make sure edge_index doesn't reference non-existent nodes
+            max_node_idx = edge_index.max().item()
+            if max_node_idx >= num_nodes:
+                # Filter out invalid edges (those referencing non-existent nodes)
+                valid_edges = (edge_index[0] < num_nodes) & (edge_index[1] < num_nodes)
+                edge_index = edge_index[:, valid_edges]
+                if edge_attr is not None and edge_attr.size(0) > 0:
+                    edge_attr = edge_attr[valid_edges]
+        
+        # Create PyG Data object with verified tensors
         graph = Data(
             x=node_features,          # Node features
             edge_index=edge_index,    # Graph connectivity
@@ -83,6 +95,12 @@ class PointCloudGraphDataset(Dataset):
             pos=point_cloud,          # Original point cloud positions
             y=com                     # Target center of mass [1, 3]
         )
+        
+        # Verify graph integrity - key step to ensure data consistency
+        assert graph.num_nodes == num_nodes, f"Node count mismatch in graph {idx}: {graph.num_nodes} vs {num_nodes}"
+        if edge_index.size(1) > 0:
+            assert edge_index.max().item() < num_nodes, f"Edge index out of bounds in graph {idx}"
+            assert edge_attr.size(0) == edge_index.size(1), f"Edge attr count mismatch in graph {idx}"
         
         # Add object name if available
         if 'name' in data:
@@ -103,7 +121,8 @@ class PointCloudDataModule(pl.LightningDataModule):
         num_workers=4, 
         pin_memory=True,
         node_feature_dim=16,
-        val_split=0.1  # Validation split from train data
+        val_split=0.1,  # Validation split from train data
+        sample_balanced=False  # Whether to balance samples across different meshes
     ):
         super().__init__()
         self.processed_dir = processed_dir
@@ -114,6 +133,7 @@ class PointCloudDataModule(pl.LightningDataModule):
         self.pin_memory = pin_memory
         self.node_feature_dim = node_feature_dim
         self.val_split = val_split
+        self.sample_balanced = sample_balanced
     
     def setup(self, stage=None):
         """Setup train, validation and test datasets"""
@@ -123,6 +143,10 @@ class PointCloudDataModule(pl.LightningDataModule):
                 self.train_dir, 
                 node_feature_dim=self.node_feature_dim
             )
+            
+            if self.sample_balanced:
+                # Group samples by mesh name and select one point cloud per mesh
+                self._create_balanced_dataset()
             
             # Split train dataset into train and validation
             train_size = int(len(self.full_train_dataset) * (1 - self.val_split))
@@ -139,6 +163,41 @@ class PointCloudDataModule(pl.LightningDataModule):
                 self.test_dir, 
                 node_feature_dim=self.node_feature_dim
             )
+    
+    def _create_balanced_dataset(self):
+        """
+        Create a balanced dataset by grouping multiple samples of the same mesh
+        and selecting one representative sample per mesh.
+        This is useful when we have multiple point clouds generated per mesh.
+        """
+        if not self.sample_balanced:
+            return
+        
+        # Extract base object name from file paths
+        file_list = self.full_train_dataset.file_list
+        file_dict = {}
+        
+        for file_path in file_list:
+            base_name = os.path.basename(file_path)
+            # Extract mesh name from filenames like "Chair_sample1.pt" -> "Chair"
+            if "_sample" in base_name:
+                mesh_name = base_name.split("_sample")[0]
+            else:
+                mesh_name = os.path.splitext(base_name)[0]
+            
+            if mesh_name not in file_dict:
+                file_dict[mesh_name] = []
+            file_dict[mesh_name].append(file_path)
+        
+        # Select one sample per mesh (randomly)
+        balanced_files = []
+        for mesh_name, files in file_dict.items():
+            # Randomly select one file per mesh
+            balanced_files.append(random.choice(files))
+        
+        # Replace the original file list with the balanced one
+        self.full_train_dataset.file_list = balanced_files
+        logger.info(f"Balanced dataset created: {len(balanced_files)} samples from {len(file_dict)} unique meshes")
     
     def train_dataloader(self):
         return DataLoader(

@@ -1,0 +1,2 @@
+model_name,train_error,test_error,generalization_ratio,mesh_count,mesh_error_mean,mesh_error_std,results_dir
+se3_equivariant_e39_v0.2302,0.64944294813433,0.661212962696,1.0181232463844314,55,0.7108266073533079,0.826013663478288,evaluation_results\se3_equivariant_e39_v0.2302

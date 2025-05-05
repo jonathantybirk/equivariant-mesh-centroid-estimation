@@ -11,6 +11,7 @@ lidar:
   h_steps: 40
   v_steps: 40
   num_cameras: 3
+  num_samples: 1  # Number of different point clouds to generate per mesh with different camera initializations
   max_lidar_distance_factor: 2.0
   include_missed_rays: false
   seed: 42

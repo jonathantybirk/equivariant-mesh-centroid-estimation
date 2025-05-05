@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from scipy.spatial import cKDTree
 from hydra.utils import get_original_cwd
+import glob
 
 def build_graph_from_pointcloud(points: np.ndarray, target: np.ndarray, k: int, node_feature_dim: int):
     """
@@ -17,29 +18,38 @@ def build_graph_from_pointcloud(points: np.ndarray, target: np.ndarray, k: int, 
     Returns:
         A dictionary with graph data.
     """
-    # Ensure target has shape (3,) - remove extra dimensions
-    target = target.reshape(-1)  # Flattens to (3,)
+    # Ensure target has shape (3,)
+    target = target.reshape(-1)
     
+    # Get number of nodes
     N = points.shape[0]
     node_features = torch.ones((N, node_feature_dim), dtype=torch.float32)
     
+    # Build k-nearest neighbors graph with fixed number of edges per node
     tree = cKDTree(points)
-    _, knn_indices = tree.query(points, k=k + 1)  # k+1 to include self
+    # Query for k+1 neighbors (including self) but limit max neighbors to available points
+    k_query = min(k + 1, N)
+    _, knn_indices = tree.query(points, k=k_query)
+    
+    # Create edge connections with a deterministic count
     senders = []
     receivers = []
+    
     for i in range(N):
-        for j in knn_indices[i][1:]:  # Skip the self index
+        # Skip the first index (self)
+        for j_idx in range(1, len(knn_indices[i])):
+            j = knn_indices[i][j_idx]
             senders.append(i)
             receivers.append(j)
     
+    # Convert to tensors
     edge_index = torch.tensor([senders, receivers], dtype=torch.long)
-    # Edge attributes: difference vector between connected nodes
-    relative = points[receivers] - points[senders]
-    edge_attr = torch.tensor(relative, dtype=torch.float32)
     
-    # For PyTorch Geometric batching to work correctly with graph-level targets,
-    # we need to ensure the target is properly formatted with an explicit batch dimension
-    # Convert target to tensor and reshape to [1, 3] to indicate it's a graph-level attribute
+    # Create edge attributes (difference vectors)
+    # This ensures that edge_attr dimensions match edge_index
+    edge_attr = torch.tensor(points[receivers] - points[senders], dtype=torch.float32)
+    
+    # Format target for PyTorch Geometric
     target_tensor = torch.tensor(target, dtype=torch.float32).view(1, 3)
     
     return {
@@ -47,7 +57,7 @@ def build_graph_from_pointcloud(points: np.ndarray, target: np.ndarray, k: int, 
         "node_features": node_features,
         "edge_index": edge_index,
         "edge_attr": edge_attr,
-        "target": target_tensor  # Now shape (1, 3) for proper PyG batching
+        "target": target_tensor
     }
 
 def convert_all_pointclouds(cfg):
@@ -66,26 +76,59 @@ def convert_all_pointclouds(cfg):
         print("No pointcloud directories found. Please run point cloud generation first.")
         return
     
+    # Get number of samples per mesh (default to 1 for backward compatibility)
+    num_samples = cfg.preprocessing.lidar.get("num_samples", 1)
+    
     for obj in obj_dirs:
         obj_dir = os.path.join(pc_dir, obj)
-        combined_path = os.path.join(obj_dir, "pointcloud_combined.npy")
-        com_path = os.path.join(obj_dir, "center_of_mass.npy")
-        if not os.path.exists(combined_path) or not os.path.exists(com_path):
-            print(f"Skipping {obj}: Missing pointcloud or center_of_mass file.")
-            continue
         
-        points = np.load(combined_path)
-        com = np.load(com_path)
-        
-        # Don't reshape the target - pass it as (3,)
-        graph_data = build_graph_from_pointcloud(
-            points=points,
-            target=com,  # No reshape, let the function handle it
-            k=cfg.preprocessing.graph.k_nn,
-            node_feature_dim=cfg.preprocessing.graph.node_feature_dim
-        )
-        save_path = os.path.join(processed_dir, f"{obj}.pt")
-        torch.save(graph_data, save_path)
-        print(f"Saved graph for {obj} to {save_path}")
+        # Handle multiple samples if they exist
+        if num_samples > 1:
+            # Process each sample
+            for sample_idx in range(1, num_samples + 1):
+                combined_path = os.path.join(obj_dir, f"pointcloud_combined_sample{sample_idx}.npy")
+                com_path = os.path.join(obj_dir, "center_of_mass.npy")  # COM is the same for all samples
+                
+                if not os.path.exists(combined_path) or not os.path.exists(com_path):
+                    print(f"Skipping {obj} sample {sample_idx}: Missing pointcloud or center_of_mass file.")
+                    continue
+                
+                points = np.load(combined_path)
+                com = np.load(com_path)
+                
+                # Process the sample point cloud
+                graph_data = build_graph_from_pointcloud(
+                    points=points,
+                    target=com,
+                    k=cfg.preprocessing.graph.k_nn,
+                    node_feature_dim=cfg.preprocessing.graph.node_feature_dim
+                )
+                
+                # Save with sample index in filename
+                save_path = os.path.join(processed_dir, f"{obj}_sample{sample_idx}.pt")
+                torch.save(graph_data, save_path)
+                print(f"Saved graph for {obj} sample {sample_idx} to {save_path}")
+        else:
+            # Original single-sample behavior for backward compatibility
+            combined_path = os.path.join(obj_dir, "pointcloud_combined.npy")
+            com_path = os.path.join(obj_dir, "center_of_mass.npy")
+            
+            if not os.path.exists(combined_path) or not os.path.exists(com_path):
+                print(f"Skipping {obj}: Missing pointcloud or center_of_mass file.")
+                continue
+            
+            points = np.load(combined_path)
+            com = np.load(com_path)
+            
+            # Don't reshape the target - pass it as (3,)
+            graph_data = build_graph_from_pointcloud(
+                points=points,
+                target=com,  # No reshape, let the function handle it
+                k=cfg.preprocessing.graph.k_nn,
+                node_feature_dim=cfg.preprocessing.graph.node_feature_dim
+            )
+            save_path = os.path.join(processed_dir, f"{obj}.pt")
+            torch.save(graph_data, save_path)
+            print(f"Saved graph for {obj} to {save_path}")
     
     print("Graph conversion complete.")

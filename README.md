@@ -39,11 +39,6 @@ This project implements a Graph Neural Network (GNN) approach for equivariant ce
    uv pip install -r requirements.txt
    ```
 
-4. Create necessary project directories (not currently implemented): 
-   ```bash
-   invoke setup
-   ```
-
 ## Usage
 
 ### Data Preprocessing
@@ -56,11 +51,12 @@ invoke preprocess --save --no-visualize
 
 Options:
 
-- `--save`: Save generated point clouds to disk
-- `--no-visualize`: Disable visualization of point clouds
-- `--num-cameras=N`: Number of LiDAR cameras (1-6)
+- `--save`: Whether to save point clouds to disk
+- `--no-visualize`: Disable point cloud visualization
+- `--num-cameras=N`: Number of LiDAR cameras per point cloud (1-6)
 - `--h-steps=N`: Horizontal resolution of LiDAR scan
 - `--v-steps=N`: Vertical resolution of LiDAR scan
+- `--num-samples=N`: Number of different point clouds to generate per mesh (with different camera initializations)
 
 ### Training
 
@@ -77,8 +73,12 @@ Options:
 - `--epochs=N`: Maximum number of training epochs (default: 100)
 - `--gpus=N`: Number of GPUs to use (0 for CPU, default: 1)
 - `--name=NAME`: Experiment name (default: "gnn_baseline")
-- `--patience=N`: Early stopping patience (default: 10)
+- `--patience=N`: Early stopping patience (default: 3)
 - `--workers=N`: Number of data loading workers (default: 4)
+- `--test`: Run test evaluation after training
+- `--fast`: Use faster training mode (less validation)
+- `--model-module=NAME`: Python path to the LightningModule class (e.g., src.model.SE3_equivariant.GNNLightningModule)
+- `--sample-balanced`: Balance training by sampling one instance of each mesh instead of using all samples
 
 ### Evaluation
 
@@ -88,17 +88,24 @@ Evaluate a trained model:
 invoke evaluate --name=gnn_baseline
 ```
 
-### Cleaning
+Options:
+- `--name=NAME`: Experiment name (should match a trained model)
+- `--checkpoint-path=PATH`: Specific checkpoint to evaluate (optional)
+- `--model-module=NAME`: Python path to the LightningModule class
 
-Clean generated files:
+### Visualization
+
+Launch interactive visualization to explore equivariance properties of the model:
 
 ```bash
-invoke clean
+invoke visualize
 ```
 
 Options:
-
-- `--directory=DIRNAME`: Specific directory to clean (logs, checkpoints, visualizations, or evaluation)
+- `--checkpoint-path=PATH`: Path to the model checkpoint to visualize
+- `--model-module=NAME`: Python path to the LightningModule class
+- `--sample-index=N`: Index of the initial sample to visualize (0-based)
+- `--gpus=N`: Number of GPUs to use (0 for CPU, default: 1)
 
 ## Weights & Biases Integration
 

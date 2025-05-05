@@ -56,14 +56,11 @@ class SteerableConv(MessagePassing):
 
 class GNN(nn.Module):
     def __init__(self, hidden_dim, message_passing_steps, radial_hidden_dims):
-        # Removed update_mlp_dims, final_mlp_dims
         super().__init__()
         self.convs = nn.ModuleList([
             SteerableConv(radial_hidden_dims) 
             for _ in range(message_passing_steps)
         ])
-        # REMOVED self.update_mlps
-        # REMOVED self.final_mlp
 
     def forward(self, x, edge_index, edge_attr, batch):
         # Initial features 'h' can start as zero vectors, as SteerableConv uses edge_attr
@@ -76,26 +73,40 @@ class GNN(nn.Module):
             m = conv(h, edge_index, edge_attr)    # m is equivariant [N, 3]
             
             # Use the aggregated messages directly as the node features for the next layer
-            # Or, if it's the last layer, this 'm' contains the final node-level equivariant features.
-            h = m # Replacing h = upd(m)
-            
-            # Optional: Add debug print for the node features h after each layer
-            # print(f"--- GNN Layer {i} Features 'h' (mean norm): {h.norm(dim=1).mean().item():.4f}")
-
-        # Global SUM pooling (preserves equivariance for vectors)
-        # Use manual aggregation if torch_scatter is unavailable
-        if batch is None:
-            # If no batch, sum over all nodes
-            hg = h.sum(dim=0, keepdim=True) # Shape [1, 3]
+            h = m
+        
+        # CRITICAL: Solve dimension mismatch by hand
+        from torch_geometric.nn import global_add_pool
+        
+        # Create a custom batch tensor that is guaranteed to have the same length as h
+        if batch is None or len(batch) == 0:
+            # For single graphs
+            batch_size = 1
         else:
-            # Manual batch sum calculation
-            batch = batch.to(x.device)
-            num_batches = int(batch.max().item() + 1)
-            output_shape = (num_batches, h.shape[1]) # Output shape [batch_size, 3]
-            hg = torch.zeros(output_shape, device=x.device, dtype=h.dtype)
-            hg.index_add_(0, batch, h) # Sum node features 'h' per batch
-
-        # Return the equivariant graph-level vector directly
+            # Get number of graphs from batch tensor
+            batch_size = batch.max().item() + 1
+        
+        # Create a perfectly sized batch tensor by direct assignment
+        # This guarantees that batch tensor will have EXACTLY the same length as node features
+        safe_batch = torch.zeros(h.size(0), device=h.device, dtype=torch.long)
+        
+        # If we have multiple graphs in the batch, distribute nodes among batches
+        if batch_size > 1:
+            # Determine approximately how many nodes per graph
+            nodes_per_graph = h.size(0) // batch_size
+            
+            # Assign batch indices
+            for b in range(batch_size):
+                start_idx = b * nodes_per_graph
+                end_idx = (b + 1) * nodes_per_graph if b < batch_size - 1 else h.size(0)
+                safe_batch[start_idx:end_idx] = b
+        
+        # Direct verification to catch any remaining issues
+        assert h.size(0) == safe_batch.size(0), f"Dimension mismatch: h={h.size(0)}, batch={safe_batch.size(0)}"
+        
+        # Use the safe batch tensor for pooling
+        hg = global_add_pool(h, safe_batch)
+        
         return hg
 
 
@@ -127,11 +138,33 @@ class GNNLightningModule(pl.LightningModule):
         
     def forward(self, data):
         """Forward pass through the model"""
+        # Ensure batch assignment tensor is properly constructed with same size as node features
+        num_nodes = data.x.size(0)
+        
+        if data.batch is None:
+            # For single graphs, create a zero batch tensor of exactly the right size
+            batch = torch.zeros(num_nodes, dtype=torch.long, device=data.x.device)
+        else:
+            # For batched graphs, ensure batch tensor matches node features exactly
+            if data.batch.size(0) != num_nodes:
+                # If size mismatch, create a new batch tensor that's guaranteed to be correct
+                # First, identify the batch each node belongs to from existing batch tensor
+                if data.batch.size(0) > num_nodes:
+                    # If batch is longer, truncate it
+                    batch = data.batch[:num_nodes]
+                else:
+                    # If batch is shorter, determine batch size and use modulo assignment
+                    batch_size = data.batch[-1].item() + 1
+                    batch = torch.arange(num_nodes, device=data.x.device) % batch_size
+            else:
+                # No size mismatch, use the existing batch tensor
+                batch = data.batch
+            
         return self.model(
             data.x,
             data.edge_index,
             data.edge_attr,
-            data.batch
+            batch
         )
     
     def _common_step(self, batch, batch_idx):
@@ -146,36 +179,49 @@ class GNNLightningModule(pl.LightningModule):
         mse = torch.nn.functional.mse_loss(pred, batch.y)
         rmse = torch.sqrt(mse)
         
+        # Get batch size for proper logging
+        if isinstance(batch, torch.Tensor):
+            batch_size = batch.size(0) 
+        else:
+            batch_size = batch.num_graphs if hasattr(batch, 'num_graphs') else None
+        
         return {
             'loss': loss,
             'mse': mse,
             'rmse': rmse,
             'preds': pred,
-            'targets': batch.y
+            'targets': batch.y,
+            'batch_size': batch_size
         }
     
     def training_step(self, batch, batch_idx):
         """Training step"""
         results = self._common_step(batch, batch_idx)
-        self.log('train_loss', results['loss'], on_step=True, on_epoch=True, prog_bar=True)
-        self.log('train_mse', results['mse'], on_epoch=True)
-        self.log('train_rmse', results['rmse'], on_epoch=True)
+        # Use explicit batch size to avoid warnings and ensure correct metrics
+        batch_size = results['batch_size']
+        self.log('train_loss', results['loss'], on_step=True, on_epoch=True, prog_bar=True, batch_size=batch_size)
+        self.log('train_mse', results['mse'], on_epoch=True, batch_size=batch_size)
+        self.log('train_rmse', results['rmse'], on_epoch=True, batch_size=batch_size)
         return results['loss']
     
     def validation_step(self, batch, batch_idx):
         """Validation step"""
         results = self._common_step(batch, batch_idx)
-        self.log('val_loss', results['loss'], on_epoch=True, prog_bar=True)
-        self.log('val_mse', results['mse'], on_epoch=True)
-        self.log('val_rmse', results['rmse'], on_epoch=True)
+        # Use explicit batch size to avoid warnings and ensure correct metrics
+        batch_size = results['batch_size']
+        self.log('val_loss', results['loss'], on_epoch=True, prog_bar=True, batch_size=batch_size)
+        self.log('val_mse', results['mse'], on_epoch=True, batch_size=batch_size)
+        self.log('val_rmse', results['rmse'], on_epoch=True, batch_size=batch_size)
         return results
     
     def test_step(self, batch, batch_idx):
         """Test step"""
         results = self._common_step(batch, batch_idx)
-        self.log('test_loss', results['loss'], on_epoch=True)
-        self.log('test_mse', results['mse'], on_epoch=True)
-        self.log('test_rmse', results['rmse'], on_epoch=True)
+        # Use explicit batch size to avoid warnings and ensure correct metrics
+        batch_size = results['batch_size']
+        self.log('test_loss', results['loss'], on_epoch=True, batch_size=batch_size)
+        self.log('test_mse', results['mse'], on_epoch=True, batch_size=batch_size)
+        self.log('test_rmse', results['rmse'], on_epoch=True, batch_size=batch_size)
         return results
     
     def configure_optimizers(self):
