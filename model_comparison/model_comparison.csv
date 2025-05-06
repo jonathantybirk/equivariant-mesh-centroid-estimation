@@ -1,3 +1,0 @@
-model_name,train_error,test_error,generalization_ratio,mesh_count,mesh_error_mean,mesh_error_std,results_dir
-se3_equivariant_e39_v0.2302,0.64944294813433,0.661212962696,1.0181232463844314,55,0.7108266073533079,0.826013663478288,evaluation_results\se3_equivariant_e39_v0.2302
-gnn_baseline_e04_v0.0697,0.695761301767282,0.6906813854242072,0.9926987656108904,55,0.7409199495884505,0.8246569389341577,evaluation_results\gnn_baseline_e04_v0.0697
