@@ -107,6 +107,43 @@ Options:
 - `--sample-index=N`: Index of the initial sample to visualize (0-based)
 - `--gpus=N`: Number of GPUs to use (0 for CPU, default: 1)
 
+## Geometric Baselines
+
+Two geometric baselines are available for comparison:
+
+- Centroid Baseline: Predicts the center of mass as the mean of all point positions in the point cloud.
+- Convex Hull Centroid Baseline: Predicts the center of mass as the centroid of the convex hull fitted around the point cloud.
+
+### Training a Baseline
+
+Train the centroid baseline:
+
+```bash
+invoke train --model-module=src.model.centroid_baseline.CentroidBaseline --name=centroid_baseline
+```
+
+Train the convex hull centroid baseline:
+
+```bash
+invoke train --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseline --name=convex_hull_baseline
+```
+
+### Evaluating a Baseline
+
+Evaluate a trained centroid baseline:
+
+```bash
+invoke evaluate --name=centroid_baseline --model-module=src.model.centroid_baseline.CentroidBaseline
+```
+
+Evaluate a trained convex hull centroid baseline:
+
+```bash
+invoke evaluate --name=convex_hull_baseline --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseline
+```
+
+These baselines do not require hyperparameters. The convex hull baseline requires scipy (install with `pip install scipy`).
+
 ## Weights & Biases Integration
 
 This project uses Weights & Biases for experiment tracking:

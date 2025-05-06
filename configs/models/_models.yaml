@@ -1,2 +1,5 @@
 models:
   seed: 42
+  gnn: src.model.gnn.GNN
+  centroid: src.model.centroid_baseline.CentroidBaseline
+  convex_hull: src.model.centroid_baseline.ConvexHullCentroidBaseline

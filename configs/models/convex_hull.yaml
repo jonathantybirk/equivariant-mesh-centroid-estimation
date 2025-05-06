@@ -1,0 +1,3 @@
+convex_hull:
+  # No hyperparameters needed for convex hull centroid baseline
+  pass

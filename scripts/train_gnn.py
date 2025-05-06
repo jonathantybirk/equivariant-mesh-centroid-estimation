@@ -63,12 +63,19 @@ def main(cfg: DictConfig):
     print(f"Using model class: {ModelClass.__name__} from {cfg.model.module_path}")
 
     # Create model instance using the dynamically imported class
-    model = ModelClass(
-        hidden_dim=cfg.models.gnn.hidden_dim,
-        message_passing_steps=cfg.models.gnn.message_passing_steps,
-        message_mlp_dims=cfg.models.gnn.message_mlp_dims,
-        lr=cfg.training.lr
-    )
+    # Only pass GNN arguments to GNN models
+    geometric_baselines = [
+        "CentroidBaseline", "ConvexHullCentroidBaseline"
+    ]
+    if ModelClass.__name__ in geometric_baselines:
+        model = ModelClass()
+    else:
+        model = ModelClass(
+            hidden_dim=cfg.models.gnn.hidden_dim,
+            message_passing_steps=cfg.models.gnn.message_passing_steps,
+            message_mlp_dims=cfg.models.gnn.message_mlp_dims,
+            lr=cfg.training.lr
+        )
     
     # Set up Weights & Biases logger (user-agnostic)
     wandb_logger = WandbLogger(
