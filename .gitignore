@@ -6,6 +6,8 @@ data/processed/*
 !data/processed/.gitkeep
 visualizations/*
 !visualizations/.gitkeep
+model_comparison/*
+!model_comparison/.gitkeep
 
 # Virtual environments
 .venv/
