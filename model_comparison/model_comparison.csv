@@ -1,0 +1,5 @@
+model_name,train_error,test_error,generalization_ratio,mesh_count,mesh_error_mean,mesh_error_std,results_dir
+convex_hull_baseline_final,0.6146628667134791,0.650359828726969,1.0580756768411224,23,0.650359828726969,0.3350967764487137,evaluation_results\convex_hull_baseline_final
+centroid_baseline_final,0.5540993232512846,0.6571994056196316,1.1860678727477727,23,0.6571994056196316,0.40319024061638736,evaluation_results\centroid_baseline_final
+se3_equivariant_final,0.619318199037419,0.6772411280730064,1.0935269286864404,23,0.6772411280730065,0.5797646935936867,evaluation_results\se3_equivariant_final
+gnn_baseline_final,0.6304781983916958,0.7033861465212228,1.115639126484484,23,0.7033861465212227,0.5425503743535838,evaluation_results\gnn_baseline_final
