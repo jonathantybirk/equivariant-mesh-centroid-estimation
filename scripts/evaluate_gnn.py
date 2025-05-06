@@ -111,6 +111,18 @@ def main(cfg: DictConfig):
     
     # Create data module with CPU-friendly settings
     try:
+        # Determine node_feature_dim for DataModule
+        if hasattr(model, 'hparams') and 'hidden_dim' in model.hparams:
+            node_feature_dim = model.hparams.hidden_dim
+        elif hasattr(cfg.models, 'gnn') and hasattr(cfg.models.gnn, 'hidden_dim'):
+            node_feature_dim = cfg.models.gnn.hidden_dim
+            print(f"Warning: model.hparams.hidden_dim not found. Using cfg.models.gnn.hidden_dim: {node_feature_dim}")
+        else:
+            # Fallback if no hidden_dim is found in model hparams or config
+            # Assuming raw coordinates (x,y,z) if no other feature dim is specified
+            node_feature_dim = 3 
+            print(f"Warning: hidden_dim not found in model.hparams or GNN config. Defaulting node_feature_dim to {node_feature_dim}.")
+
         data_module = PointCloudDataModule(
             processed_dir=cfg.preprocessing.processed_dir,
             train_dir=os.path.join(cfg.preprocessing.processed_dir, "train"),
@@ -118,7 +130,7 @@ def main(cfg: DictConfig):
             batch_size=1,  # Evaluate one sample at a time
             num_workers=0,  # No multiprocessing
             pin_memory=False,  # CPU-friendly
-            node_feature_dim=model.hparams.hidden_dim
+            node_feature_dim=node_feature_dim
         )
         data_module.setup(stage='fit')  # Load train data for generalization metrics 
         data_module.setup(stage='test')

@@ -136,7 +136,28 @@ def visualize(cfg: DictConfig):
     print("Loading data...")
     try:
         # Load both train and test datasets
-        node_feature_dim = getattr(model.hparams, 'hidden_dim', 16)
+        # Determine node_feature_dim for DataModule
+        node_feature_dim = 16 # Default GNN hidden dim
+        if hasattr(model, 'hparams') and hasattr(model.hparams, 'hidden_dim'):
+            node_feature_dim = model.hparams.hidden_dim
+            print(f"Using hidden_dim from model.hparams: {node_feature_dim}")
+        elif hasattr(model, 'hidden_dim'): # For models that might store it directly
+             node_feature_dim = model.hidden_dim
+             print(f"Using hidden_dim from model.hidden_dim: {node_feature_dim}")
+        else:
+            model_class_name = model.__class__.__name__
+            if "Baseline" in model_class_name:
+                node_feature_dim = 3 # Raw (x,y,z) coordinates for baselines
+                print(f"Warning: hidden_dim not found for model '{model_class_name}'. Defaulting node_feature_dim to {node_feature_dim} (for raw coordinates).")
+            else:
+                # Try to get from visualize.yaml's model config, else use default_gnn_hidden_dim
+                default_gnn_hidden_dim = 16 
+                # cfg.model is DictConfig for the 'model' section in visualize.yaml
+                node_feature_dim = cfg.model.get('hidden_dim', default_gnn_hidden_dim) 
+                if node_feature_dim == default_gnn_hidden_dim and not cfg.model.get('hidden_dim'): # only print warning if not explicitly set in yaml
+                    print(f"Warning: hidden_dim not found on model or in visualize.yaml model config. Defaulting node_feature_dim to {node_feature_dim}.")
+                elif cfg.model.get('hidden_dim'):
+                     print(f"Using hidden_dim from visualize.yaml model config: {node_feature_dim}")
         
         data_module = PointCloudDataModule(
             processed_dir=cfg.data.processed_dir,
@@ -517,4 +538,4 @@ def update_rotation(val):
 
 
 if __name__ == "__main__":
-    visualize() 
+    visualize()
