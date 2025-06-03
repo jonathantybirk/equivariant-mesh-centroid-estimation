@@ -8,8 +8,8 @@ lidar:
   metadata_path: data/processed/metadata.csv
   h_fov_deg: 90
   v_fov_deg: 90
-  h_steps: 40
-  v_steps: 40
+  h_steps: 5
+  v_steps: 5
   num_cameras: 3
   num_samples: 1  # Number of different point clouds to generate per mesh with different camera initializations
   max_lidar_distance_factor: 2.0

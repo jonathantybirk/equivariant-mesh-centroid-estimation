@@ -12,3 +12,4 @@ rtree
 scipy
 torch-geometric
 wandb
+e3nn

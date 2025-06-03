@@ -1,14 +1,19 @@
 import numpy as np
 import trimesh
 
-def load_mesh(filepath):
-    mesh_obj = trimesh.load(filepath, force='mesh')
-    if not mesh_obj.is_watertight:
-        print(f"Warning: Mesh at {filepath} is not watertight; mass properties may be inaccurate.")
+
+def load_mesh(filepath, debug=False):
+    mesh_obj = trimesh.load(filepath, force="mesh")
+    if not mesh_obj.is_watertight and debug:
+        print(
+            f"Warning: Mesh at {filepath} is not watertight; mass properties may be inaccurate."
+        )
     return mesh_obj
+
 
 def compute_center_of_mass(mesh_obj):
     return mesh_obj.mass_properties.center_mass
+
 
 def random_point_on_mesh(mesh_obj):
     triangles = mesh_obj.triangles
@@ -21,6 +26,7 @@ def random_point_on_mesh(mesh_obj):
     w = 1 - u - v
     return u * triangle[0] + v * triangle[1] + w * triangle[2]
 
+
 def sample_surface_point(mesh_obj):
     areas = mesh_obj.area_faces
     tri_idx = np.random.choice(len(areas), p=areas / areas.sum())
@@ -31,6 +37,7 @@ def sample_surface_point(mesh_obj):
     point = u * tri[0] + v * tri[1] + w * tri[2]
     return point, tri_idx
 
+
 def is_visible_from_camera(mesh_obj, point, tri_idx, camera_pos):
     ray_dir = point - camera_pos
     ray_dir /= np.linalg.norm(ray_dir)
@@ -39,9 +46,7 @@ def is_visible_from_camera(mesh_obj, point, tri_idx, camera_pos):
     directions = np.array([ray_dir])
 
     locations, index_ray, index_tri = mesh_obj.ray.intersects_location(
-        ray_origins=origins,
-        ray_directions=directions,
-        multiple_hits=False
+        ray_origins=origins, ray_directions=directions, multiple_hits=False
     )
 
     if len(locations) == 0:
@@ -59,14 +64,14 @@ def is_visible_from_camera(mesh_obj, point, tri_idx, camera_pos):
 
     return np.dot(normal, view_dir) > 0  # front-facing
 
+
 def sample_visible_target_and_camera(mesh_obj, radius, max_attempts=200):
     """
     Sample a visible target point on a triangle and a camera position that can see it.
     """
     for _ in range(max_attempts):
         tri_idx = np.random.choice(
-            len(mesh_obj.area_faces),
-            p=mesh_obj.area_faces / mesh_obj.area_faces.sum()
+            len(mesh_obj.area_faces), p=mesh_obj.area_faces / mesh_obj.area_faces.sum()
         )
         tri = mesh_obj.triangles[tri_idx]
 

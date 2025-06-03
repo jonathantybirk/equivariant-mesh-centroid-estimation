@@ -1,0 +1,32 @@
+# debug_overfit.yaml - Debug by overfitting on small subset
+# @package _global_
+
+defaults:
+  - config  # Base config
+  - _self_
+
+# Override name for debug runs
+name: "debug_overfit_gnn"
+
+# Enable overfitting on small subset
+overfit_batches: 10  # Overfit on 10 batches
+
+# Training parameters optimized for overfitting
+training:
+  max_epochs: 50   # More epochs to see overfitting
+  batch_size: 8
+  lr: 1e-2         # Higher learning rate
+  check_val_every_n_epoch: 5
+  enable_wandb: false
+
+# Standard model for overfitting test
+models:
+  gnn:
+    hidden_dim: 32
+    message_passing_steps: 2
+    final_mlp_dims: [64, 32]
+    max_sh_degree: 2
+
+# Use current directory 
+preprocessing:
+  processed_dir: "data/processed" 

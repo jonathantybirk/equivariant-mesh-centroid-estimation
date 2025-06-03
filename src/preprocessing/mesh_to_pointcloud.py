@@ -2,46 +2,74 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from hydra.utils import get_original_cwd
+from tqdm import tqdm
+import logging
 
 from src.utils import geometry, mesh, lidar
 
-def process_mesh(mesh_path, cfg):
-    obj_name = os.path.splitext(os.path.basename(mesh_path))[0]
-    print(f"Processing {obj_name}...")
 
-    m = mesh.load_mesh(mesh_path)
+def process_mesh(mesh_path, cfg, debug=False):
+    obj_name = os.path.splitext(os.path.basename(mesh_path))[0]
+    if debug:
+        print(f"Processing {obj_name}...")
+
+    m = mesh.load_mesh(mesh_path, debug=debug)
     com = mesh.compute_center_of_mass(m)
-    print(f"  Center of mass: {com}")
+    if debug:
+        print(f"  Center of mass: {com}")
 
     # Determine camera distance using max_lidar_distance_factor
-    radius = m.bounding_sphere.primitive.radius * cfg.preprocessing.lidar.max_lidar_distance_factor
+    radius = (
+        m.bounding_sphere.primitive.radius
+        * cfg.preprocessing.lidar.max_lidar_distance_factor
+    )
 
     # Use Hydra's original working directory so paths are relative to your project root
     original_cwd = get_original_cwd()
-    obj_output_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.output_dir, obj_name)
+    obj_output_dir = os.path.join(
+        original_cwd, cfg.preprocessing.lidar.output_dir, obj_name
+    )
     os.makedirs(obj_output_dir, exist_ok=True)
 
-    output_dir = os.path.join(get_original_cwd(), cfg.preprocessing.lidar.output_dir, obj_name)
+    output_dir = os.path.join(
+        get_original_cwd(), cfg.preprocessing.lidar.output_dir, obj_name
+    )
     os.makedirs(output_dir, exist_ok=True)
 
     # Get number of samples to generate
     num_samples = cfg.preprocessing.lidar.get("num_samples", 1)
-    
+
     # Process for each sample with different random seed per sample
-    for sample_idx in range(num_samples):
+    for sample_idx in tqdm(
+        range(num_samples),
+        desc=f"Samples for {obj_name}",
+        leave=False,
+        disable=not debug or num_samples == 1,
+    ):
         # Set different random seed for each sample to ensure different camera positions
-        sample_seed = cfg.preprocessing.lidar.seed + sample_idx 
+        sample_seed = cfg.preprocessing.lidar.seed + sample_idx
         np.random.seed(sample_seed)
-        
-        print(f"  Generating sample {sample_idx+1}/{num_samples} with seed {sample_seed}")
-        
+
+        if debug:
+            print(
+                f"  Generating sample {sample_idx+1}/{num_samples} with seed {sample_seed}"
+            )
+
         camera_positions = []
         target_points = []
         all_points_by_camera = []
 
-        for i in range(cfg.preprocessing.lidar.num_cameras):
+        camera_progress = tqdm(
+            range(cfg.preprocessing.lidar.num_cameras),
+            desc=f"Cameras",
+            leave=False,
+            disable=not debug or cfg.preprocessing.lidar.num_cameras == 1,
+        )
+        for i in camera_progress:
             try:
-                target_point, camera_pos = mesh.sample_visible_target_and_camera(m, radius)
+                target_point, camera_pos = mesh.sample_visible_target_and_camera(
+                    m, radius
+                )
                 camera_positions.append(camera_pos)
                 target_points.append(target_point)
 
@@ -54,23 +82,36 @@ def process_mesh(mesh_path, cfg):
                     h_steps=cfg.preprocessing.lidar.h_steps,
                     v_steps=cfg.preprocessing.lidar.v_steps,
                     max_distance=radius,
-                    include_misses=cfg.preprocessing.lidar.include_missed_rays
+                    include_misses=cfg.preprocessing.lidar.include_missed_rays,
                 )
                 all_points_by_camera.append(pts)
 
                 if cfg.preprocessing.lidar.save:
                     if num_samples > 1:
                         # Save each camera point cloud with sample index included in filename
-                        np.save(os.path.join(obj_output_dir, f"pointcloud_sample{sample_idx+1}_cam{i+1}.npy"), pts)
+                        np.save(
+                            os.path.join(
+                                obj_output_dir,
+                                f"pointcloud_sample{sample_idx+1}_cam{i+1}.npy",
+                            ),
+                            pts,
+                        )
                     else:
                         # Original behavior for backward compatibility
-                        np.save(os.path.join(obj_output_dir, f"pointcloud_cam{i+1}.npy"), pts)
+                        np.save(
+                            os.path.join(obj_output_dir, f"pointcloud_cam{i+1}.npy"),
+                            pts,
+                        )
 
             except RuntimeError as e:
-                print(f"  Warning: {e} Skipping this camera.")
+                if debug:
+                    print(f"  Warning: {e} Skipping this camera.")
 
         if not all_points_by_camera:
-            print(f"  Skipped sample {sample_idx+1} — no cameras could see the mesh.")
+            if debug:
+                print(
+                    f"  Skipped sample {sample_idx+1} — no cameras could see the mesh."
+                )
             continue
 
         all_points = np.concatenate(all_points_by_camera, axis=0)
@@ -78,53 +119,83 @@ def process_mesh(mesh_path, cfg):
         if cfg.preprocessing.lidar.save:
             if num_samples > 1:
                 # Save combined point cloud for this sample
-                np.save(os.path.join(obj_output_dir, f"pointcloud_combined_sample{sample_idx+1}.npy"), all_points)
-                np.save(os.path.join(obj_output_dir, f"camera_positions_sample{sample_idx+1}.npy"), np.array(camera_positions))
+                np.save(
+                    os.path.join(
+                        obj_output_dir, f"pointcloud_combined_sample{sample_idx+1}.npy"
+                    ),
+                    all_points,
+                )
+                np.save(
+                    os.path.join(
+                        obj_output_dir, f"camera_positions_sample{sample_idx+1}.npy"
+                    ),
+                    np.array(camera_positions),
+                )
             else:
                 # Original behavior for backward compatibility
-                np.save(os.path.join(obj_output_dir, "pointcloud_combined.npy"), all_points)
-                np.save(os.path.join(obj_output_dir, "camera_positions.npy"), np.array(camera_positions))
-            
+                np.save(
+                    os.path.join(obj_output_dir, "pointcloud_combined.npy"), all_points
+                )
+                np.save(
+                    os.path.join(obj_output_dir, "camera_positions.npy"),
+                    np.array(camera_positions),
+                )
+
             # Always save center of mass (same for all samples)
-            if sample_idx == 0 or not os.path.exists(os.path.join(obj_output_dir, "center_of_mass.npy")):
-                np.save(os.path.join(obj_output_dir, "center_of_mass.npy"), np.array(com))
+            if sample_idx == 0 or not os.path.exists(
+                os.path.join(obj_output_dir, "center_of_mass.npy")
+            ):
+                np.save(
+                    os.path.join(obj_output_dir, "center_of_mass.npy"), np.array(com)
+                )
 
             # Update metadata
-            metadata_path = os.path.join(original_cwd, cfg.preprocessing.lidar.metadata_path)
+            metadata_path = os.path.join(
+                original_cwd, cfg.preprocessing.lidar.metadata_path
+            )
             os.makedirs(os.path.dirname(metadata_path), exist_ok=True)
             header = "object,sample,center_of_mass,camera_distance,num_cameras\n"
             line = f"{obj_name},{sample_idx+1},{com.tolist()},{radius},{len(camera_positions)}\n"
-            
+
             if not os.path.exists(metadata_path):
                 with open(metadata_path, "w") as f:
                     f.write(header)
-            
+
             with open(metadata_path, "a") as f:
                 f.write(line)
 
         if cfg.preprocessing.lidar.visualize:
             fig = plt.figure(figsize=(6, 5))
-            ax = fig.add_subplot(111, projection='3d')
+            ax = fig.add_subplot(111, projection="3d")
             # Colors in binary order: 100, 010, 001, 011, 101, 110
             colors = [
-                (1, 0, 0),    # red   (100)
-                (0, 1, 0),    # green (010)
-                (0, 0, 1),    # blue  (001)
-                (0, 1, 1),    # cyan  (011)
-                (1, 0, 1),    # magenta (101)
-                (1, 1, 0)     # yellow (110)
+                (1, 0, 0),  # red   (100)
+                (0, 1, 0),  # green (010)
+                (0, 0, 1),  # blue  (001)
+                (0, 1, 1),  # cyan  (011)
+                (1, 0, 1),  # magenta (101)
+                (1, 1, 0),  # yellow (110)
             ]
             for idx, pts in enumerate(all_points_by_camera):
                 color = colors[idx % len(colors)]
                 ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=1, color=color, alpha=0.6)
                 cam = camera_positions[idx]
-                ax.scatter(cam[0], cam[1], cam[2], marker='^', s=100, color=color)
+                ax.scatter(cam[0], cam[1], cam[2], marker="^", s=100, color=color)
                 target = target_points[idx]
-                ax.scatter(target[0], target[1], target[2], marker='x', s=50, color=color)
+                ax.scatter(
+                    target[0], target[1], target[2], marker="x", s=50, color=color
+                )
                 if getattr(cfg, "show_target_lines", True):
                     line = np.vstack((cam, target))
-                    ax.plot(line[:, 0], line[:, 1], line[:, 2], linestyle='--', linewidth=1, color=color)
-            ax.scatter(com[0], com[1], com[2], marker='o', color='black', s=150)
+                    ax.plot(
+                        line[:, 0],
+                        line[:, 1],
+                        line[:, 2],
+                        linestyle="--",
+                        linewidth=1,
+                        color=color,
+                    )
+            ax.scatter(com[0], com[1], com[2], marker="o", color="black", s=150)
             if num_samples > 1:
                 title = f"{obj_name} - Sample {sample_idx+1} - LiDAR Point Cloud View"
             else:
@@ -137,21 +208,44 @@ def process_mesh(mesh_path, cfg):
                 vis_dir = os.path.join(obj_output_dir, "visualizations")
                 os.makedirs(vis_dir, exist_ok=True)
                 if num_samples > 1:
-                    vis_path = os.path.join(vis_dir, f"pointcloud_view_sample{sample_idx+1}.png")
+                    vis_path = os.path.join(
+                        vis_dir, f"pointcloud_view_sample{sample_idx+1}.png"
+                    )
                 else:
                     vis_path = os.path.join(vis_dir, "pointcloud_view.png")
-                dpi = cfg.preprocessing.lidar.get("dpi", 300) if hasattr(cfg.preprocessing.lidar, "dpi") else 300
+                dpi = (
+                    cfg.preprocessing.lidar.get("dpi", 300)
+                    if hasattr(cfg.preprocessing.lidar, "dpi")
+                    else 300
+                )
                 plt.savefig(vis_path, dpi=dpi)
             plt.show()
             plt.close()
 
+
 def process_all_meshes(cfg):
+    print("Loading mesh data...")
     original_cwd = get_original_cwd()
     mesh_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.mesh_dir)
     obj_files = [f for f in os.listdir(mesh_dir) if f.endswith(".obj")]
     if not obj_files:
         raise FileNotFoundError(f"No .obj files found in {mesh_dir}")
-    for obj_file in obj_files:
+
+    debug = cfg.get("debug", False)
+
+    # Control logging levels based on debug mode
+    if not debug:
+        # Suppress trimesh INFO messages when not in debug mode
+        logging.getLogger("trimesh").setLevel(logging.WARNING)
+    else:
+        # Allow all trimesh messages in debug mode
+        logging.getLogger("trimesh").setLevel(logging.INFO)
+        print("[DEBUG] Debug mode enabled")
+        print(f"Processing {len(obj_files)} mesh files from {mesh_dir}")
+
+    print("Generating point clouds from meshes...")
+    for obj_file in tqdm(obj_files, desc="Processing meshes"):
         mesh_path = os.path.join(mesh_dir, obj_file)
-        process_mesh(mesh_path, cfg)
+        process_mesh(mesh_path, cfg, debug=debug)
+
     print("Point cloud generation complete.")

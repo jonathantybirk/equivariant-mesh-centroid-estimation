@@ -2,5 +2,7 @@ processed_dir: data/processed
 save_intermediate: true
 random_seed: 42
 num_workers: 4
+split_type: train  # Default split type for metadata (train/test/val)
+debug: false  # Enable detailed debug logging during preprocessing
 preprocessing:
   skip_graph: false

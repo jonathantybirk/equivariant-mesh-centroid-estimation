@@ -1,4 +1,4 @@
 graph:
-  k_nn: 10
-  node_feature_dim: 16
-  edge_attr_dim: 3
+  k_nn: 10  # Number of nearest neighbors for sparse graph connectivity (keep low for performance)
+  use_spherical_harmonics: true  # Whether to compute SH features during preprocessing
+  max_sh_degree: 1  # Maximum spherical harmonic degree (0=scalar, 1=+vector, 2=+tensor, etc.)
