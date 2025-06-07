@@ -124,3 +124,21 @@ class BaseModel(pl.LightningModule):
                 "frequency": 1,
             },
         }
+
+    def compute_clean_train_mae(self, train_loader):
+        """
+        Diagnostic method: compute training MAE in eval() mode (no dropout/noise)
+        to check if train/val gap is due to regularization during training
+        """
+        self.eval()
+        total_mae = 0.0
+        total_samples = 0
+
+        with torch.no_grad():
+            for batch in train_loader:
+                pred = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+                mae = F.l1_loss(pred, batch.y, reduction="sum")
+                total_mae += mae.item()
+                total_samples += batch.y.size(0)
+
+        return total_mae / total_samples

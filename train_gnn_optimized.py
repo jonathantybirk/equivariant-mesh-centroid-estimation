@@ -82,7 +82,7 @@ class PointCloudData(pl.LightningDataModule):
             shuffle=True,
             num_workers=self.hparams.num_workers,
             pin_memory=torch.cuda.is_available(),
-            drop_last=True,
+            drop_last=False,
         )
 
     def val_dataloader(self):

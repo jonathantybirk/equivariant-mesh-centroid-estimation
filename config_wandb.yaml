@@ -4,12 +4,17 @@
 # Model configuration
 model:
   # class_path: BasicGNN
+  # init_args:
+  #   lr: 1e-3
+  #   weight_decay: 1e-5
+    # dropout: 0.1
   class_path: EquivariantGNN
   init_args:
     lr: 1e-3
     weight_decay: 1e-5
     input_dim: 3
     hidden_dim: 16
+    multiplicity: 4
     message_passing_steps: 3
     final_mlp_dims: [64, 32]
     max_sh_degree: 1
@@ -18,7 +23,7 @@ model:
 data:
   # data_dir: "data/processed_dv"
   data_dir: "data/processed_sh"
-  val_split: 0.1
+  val_split: 0.2
   batch_size: 16
   num_workers: 0
 
@@ -41,6 +46,9 @@ trainer:
   
   # Callbacks for better training
   callbacks:
+    # Custom callback to log total parameters to WandB metadata
+    - class_path: src.callbacks.parameter_logger.ParameterCountLogger
+    
     # Model summary with detailed submodule parameter breakdown
     - class_path: lightning.pytorch.callbacks.ModelSummary
       init_args:

@@ -457,6 +457,7 @@ class EquivariantGNN(BaseModel):
         lr=None,
         weight_decay=None,
         multiplicity=2,
+        dropout=0.1,
     ):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
@@ -467,6 +468,7 @@ class EquivariantGNN(BaseModel):
         self.debug = debug
         self.message_passing_steps = message_passing_steps
         self.multiplicity = multiplicity
+        self.dropout = dropout
 
         # Fixed irrep structure for center of mass: [0, 1] (scalar + vector)
         # With multiplicity, each irrep type has multiple channels
@@ -495,12 +497,17 @@ class EquivariantGNN(BaseModel):
             ]
         )
 
-        # Final MLP: invariant features -> scalar weights
+        # Final MLP with proper regularization: invariant features -> scalar weights
         final_layers = []
         prev_dim = 2  # l=0 scalar + l=1 invariant scalar
-        for dim in final_mlp_dims:
+        for i, dim in enumerate(final_mlp_dims):
             final_layers.append(nn.Linear(prev_dim, dim))
+            final_layers.append(
+                nn.LayerNorm(dim)
+            )  # Layer normalization for stable training
             final_layers.append(nn.ReLU())
+            if dropout > 0:
+                final_layers.append(nn.Dropout(dropout))  # Dropout for regularization
             prev_dim = dim
         final_layers.append(nn.Linear(prev_dim, 1))
         self.final_mlp = nn.Sequential(*final_layers)
