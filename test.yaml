@@ -24,20 +24,20 @@ data:
 
 # Trainer configuration with W&B logging
 trainer:
-  max_epochs: 100
+  max_epochs: 10
   accelerator: auto
   devices: auto
   precision: 32
   
   # Weights & Biases logger configuration
-  logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      project: "gnn-center-of-mass"
-      name: "equivariant-gnn-optimized"
-      save_dir: "wandb_logs"
-      log_model: "all"  # Log model checkpoints to W&B
-      tags: ["equivariant", "gnn", "center-of-mass", "optimized"]
+  # logger:
+  #   class_path: lightning.pytorch.loggers.WandbLogger
+  #   init_args:
+  #     project: "gnn-center-of-mass"
+  #     name: "equivariant-gnn-optimized"
+  #     save_dir: "wandb_logs"
+  #     log_model: "all"  # Log model checkpoints to W&B
+  #     tags: ["equivariant", "gnn", "center-of-mass", "optimized"]
   
   # Callbacks for better training
   callbacks:
