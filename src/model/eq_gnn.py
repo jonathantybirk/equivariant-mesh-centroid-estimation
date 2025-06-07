@@ -483,6 +483,16 @@ class GNN(torch.nn.Module):
         Returns:
             Center of mass prediction [B, 3] where B is batch size
         """
+        # For translation equivariance, we need absolute position information
+        # If node_pos is not provided, use the input features as positions (assuming they are 3D)
+        if node_pos is None:
+            if x.shape[1] == 3:
+                node_pos = x  # Use input features as positions
+            else:
+                raise ValueError(
+                    "For translation equivariance, either node_pos must be provided or x must be 3D positions"
+                )
+
         # Determine if edge_attr contains preprocessed spherical harmonics or raw displacements
         # SH features have dimension: sum(2*l+1 for l in range(max_l+1))
         # For max_l=1: 1 + 3 = 4 dimensions
@@ -505,8 +515,16 @@ class GNN(torch.nn.Module):
                 print(f"⚡ Using preprocessed SH features (dim={edge_attr_dim})")
             sh_edge_features = self._split_sh_features(edge_attr, self.max_sh_degree)
 
-        # Initial embedding: produce a list of irreps for each node
-        node_irreps = [enc(x) for enc in self.node_encoders]  # List of [N, 2l+1]
+        # IMPORTANT: Use translation-invariant node features for initial embedding
+        # We'll use relative features (e.g., zero mean) instead of absolute positions
+        centered_x = x - x.mean(
+            dim=0, keepdim=True
+        )  # Remove global translation component
+
+        # Initial embedding: produce a list of irreps for each node using centered features
+        node_irreps = [
+            enc(centered_x) for enc in self.node_encoders
+        ]  # List of [N, 2l+1]
         # Transpose to list of length N, each is list of irreps for that node
         node_irreps = [
             [node_irreps[i][n] for i in range(len(node_irreps))]
@@ -519,8 +537,8 @@ class GNN(torch.nn.Module):
 
         # For equivariant center of mass prediction:
         # 1. Create invariant features: l=0 + invariant features from l=1
-        # 2. Use MLP on invariant features to get scalar weights
-        # 3. Multiply weights with l=1 features to get equivariant 3D output
+        # 2. Use MLP on invariant features to get scalar weights (translation-invariant!)
+        # 3. Use weights to combine absolute positions (translation equivariant!)
 
         invariant_features = []
         l1_features = []
@@ -545,40 +563,54 @@ class GNN(torch.nn.Module):
         invariant_features = torch.stack(invariant_features, dim=0)  # [N, 2]
         l1_features = torch.stack(l1_features, dim=0)  # [N, 3]
 
-        # Generate scalar weights using only invariant features
+        # Generate scalar weights using only translation-invariant features
         scalar_weights = self.final_mlp(invariant_features)  # [N, 1]
 
-        # Create equivariant prediction: scalar_weight * l1_vector for each node
-        node_predictions = scalar_weights * l1_features  # [N, 3] - equivariant!
+        # Normalize weights to sum to 1 (proper center of mass weighting)
+        scalar_weights = torch.softmax(scalar_weights.squeeze(-1), dim=0).unsqueeze(
+            -1
+        )  # [N, 1]
 
-        # Average predictions across nodes in each graph
+        if self.debug:
+            print(
+                f"[DEBUG] Normalized scalar weights: min={scalar_weights.min().item():.4f}, max={scalar_weights.max().item():.4f}, sum={scalar_weights.sum().item():.4f}"
+            )
+            print(
+                f"[DEBUG] Node positions: {node_pos[:3] if len(node_pos) > 3 else node_pos}"
+            )
+
+        # For translation equivariance: Use normalized weights to combine absolute positions
+        # This ensures that if all positions translate by t, the prediction also translates by t
+        weighted_positions = (
+            scalar_weights * node_pos
+        )  # [N, 3] - uses absolute positions!
+
+        if self.debug:
+            print(
+                f"[DEBUG] Weighted positions sample: {weighted_positions[:3] if len(weighted_positions) > 3 else weighted_positions}"
+            )
+
+        # Sum weighted positions (since weights sum to 1, this gives proper center of mass)
         if batch is not None:
-            com_prediction = self._scatter_mean(node_predictions, batch)
+            com_prediction = self._scatter_sum_normalized(weighted_positions, batch)
         else:
-            com_prediction = node_predictions.mean(dim=0, keepdim=True)
+            com_prediction = weighted_positions.sum(dim=0, keepdim=True)
+
+        if self.debug:
+            print(f"[DEBUG] Final COM prediction: {com_prediction.squeeze()}")
+
         return com_prediction
 
-    def _scatter_mean(self, src, index, dim_size=None):
-        """Custom function to replace torch_scatter.scatter_mean for pooling"""
+    def _scatter_sum_normalized(self, src, index, dim_size=None):
+        """Sum normalized weights - used when weights already sum to 1"""
         if dim_size is None:
             dim_size = index.max().item() + 1
 
         # Create output tensor
         out = torch.zeros(dim_size, src.size(1), device=src.device)
 
-        # Count elements per target index
-        ones = torch.ones(src.size(0), 1, device=src.device)
-        count = torch.zeros(dim_size, 1, device=src.device)
-        count.index_add_(0, index, ones)
-
-        # Sum elements with same target
+        # Sum elements with same target (no averaging needed since weights sum to 1)
         out.index_add_(0, index, src)
-
-        # Avoid division by zero
-        count = torch.clamp(count, min=1.0)
-
-        # Compute mean
-        out = out / count
 
         return out
 
