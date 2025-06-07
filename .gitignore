@@ -50,3 +50,4 @@ __pycache__/
 Thumbs.db
 
 lightning_logs/
+wandb_logs/

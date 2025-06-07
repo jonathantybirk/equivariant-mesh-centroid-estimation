@@ -1,0 +1,51 @@
+# Lightning CLI Configuration for Basic GNN
+# Usage: python train_lightning_cli.py fit --config configs/basic_gnn.yaml
+
+# Model configuration - uses BasicGNNWrapper
+model:
+  class_path: BasicGNNWrapper
+  init_args:
+    hidden_dim: 128
+    num_layers: 4
+    lr: 1e-3
+    weight_decay: 1e-5
+    message_mlp_dims: [70, 140, 20]
+    update_mlp_dims: [70]
+    final_mlp_dims: [64, 32]
+
+# Data configuration - uses basic displacement vectors
+data:
+  class_path: PointCloudDataModule
+  init_args:
+    data_dir: "data/processed"  # Uses basic 3D displacement vectors
+    batch_size: 16
+    val_split: 0.1
+    num_workers: 4
+
+# Trainer configuration
+trainer:
+  max_epochs: 100
+  accelerator: auto
+  devices: auto
+  precision: "32"
+  gradient_clip_val: 1.0
+  gradient_clip_algorithm: "norm"
+  log_every_n_steps: 10
+  check_val_every_n_epoch: 1
+  enable_checkpointing: true
+  enable_progress_bar: true
+  num_sanity_val_steps: 0
+
+# Checkpointing
+callbacks:
+  - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+    init_args:
+      monitor: "val_loss"
+      mode: "min"
+      save_top_k: 3
+      save_last: true
+      filename: "basic-gnn-{epoch:02d}-{val_loss:.3f}"
+      auto_insert_metric_name: false
+
+# Random seed for reproducibility
+seed_everything: 42 

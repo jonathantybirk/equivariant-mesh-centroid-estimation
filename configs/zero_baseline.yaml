@@ -1,0 +1,32 @@
+# Lightning CLI Configuration for Zero Baseline
+# Usage: python train_lightning_cli.py fit --config configs/zero_baseline.yaml
+
+# Model configuration - always predicts zero
+model:
+  class_path: ZeroBaselineGNN
+  init_args:
+    lr: 1e-3
+
+# Data configuration - can use either basic or SH data
+data:
+  class_path: PointCloudDataModule
+  init_args:
+    data_dir: "data/processed"  # Baseline works with any data
+    batch_size: 16
+    val_split: 0.1
+    num_workers: 4
+
+# Trainer configuration - shorter training since it's just a baseline
+trainer:
+  max_epochs: 10
+  accelerator: auto
+  devices: auto
+  precision: "32"
+  log_every_n_steps: 10
+  check_val_every_n_epoch: 1
+  enable_checkpointing: false  # No need to save zero baseline
+  enable_progress_bar: true
+  num_sanity_val_steps: 0
+
+# Random seed for reproducibility
+seed_everything: 42 
