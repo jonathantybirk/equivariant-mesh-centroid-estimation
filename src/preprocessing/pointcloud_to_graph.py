@@ -201,7 +201,7 @@ def process_point_cloud_files(
         if use_sh:
             output_dir = os.path.join(base_dir, base_output_dir + "_sh")
         else:
-            output_dir = os.path.join(base_dir, base_output_dir)
+            output_dir = os.path.join(base_dir, base_output_dir + "_dv")
 
         debug = cfg.get("debug", False)
     else:
@@ -212,7 +212,7 @@ def process_point_cloud_files(
             if use_sh:
                 output_dir = "data/processed_sh"
             else:
-                output_dir = "data/processed"
+                output_dir = "data/processed_dv"
         debug = False
 
     print("Loading point cloud data...")
