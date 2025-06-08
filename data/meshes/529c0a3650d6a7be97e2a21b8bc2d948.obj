@@ -1,0 +1,125 @@
+# File produced by Open Asset Import Library (http://www.assimp.sf.net)
+# (assimp v3.2.202087883)
+
+mtllib model_normalized.mtl
+
+# 20 vertex positions
+v -0.228456 -0.295144 -0.168763
+v 0.228456 -0.295144 -0.240265
+v 0.228456 -0.295144 -0.168763
+v -0.228456 -0.295144 -0.240265
+v 0.228456 0.485903 0.111207
+v -0.228456 0.485903 0.185406
+v 0.228456 0.485903 0.185406
+v -0.228456 0.485903 0.111207
+v -0.228456 0.079299 -0.240265
+v 0.228456 0.079299 -0.240265
+v 0.228456 0.079299 0.111207
+v 0.228456 0.025085 0.112414
+v 0.228456 -0.295144 0.112414
+v 0.228456 -0.295144 0.185406
+v 0.228456 0.025085 -0.168763
+v -0.228456 -0.295144 0.185406
+v -0.228456 0.025085 0.112414
+v -0.228456 -0.295144 0.112414
+v -0.228456 0.025085 -0.168763
+v -0.228456 0.079299 0.111207
+
+# 0 UV coordinates
+
+# 6 vertex normals
+vn 0 -0.0254 0
+vn 0 0.0254 0
+vn 0 0 -0.0254
+vn 0.0254 1.43506e-17 -1.15867e-17
+vn 0 0 0.0254
+vn -0.0254 0 0
+
+# Mesh 'SketchUp_ID2' with 2 faces
+g SketchUp_ID2
+usemtl material
+f  1//1 2//1 3//1
+f  2//1 1//1 4//1
+
+# Mesh 'SketchUp_ID2' with 2 faces
+g SketchUp_ID2
+usemtl material_0
+f  4//2 1//2 2//2
+f  3//2 2//2 1//2
+
+# Mesh 'SketchUp_ID12' with 2 faces
+g SketchUp_ID12
+usemtl material_1
+f  5//2 6//2 7//2
+f  6//2 5//2 8//2
+
+# Mesh 'SketchUp_ID20' with 2 faces
+g SketchUp_ID20
+usemtl material_2
+f  9//3 2//3 4//3
+f  2//3 9//3 10//3
+
+# Mesh 'SketchUp_ID28' with 8 faces
+g SketchUp_ID28
+usemtl material_3
+f  7//4 11//4 5//4
+f  11//4 7//4 12//4
+f  12//4 7//4 13//4
+f  13//4 7//4 14//4
+f  10//4 15//4 2//4
+f  15//4 10//4 11//4
+f  15//4 11//4 12//4
+f  3//4 2//4 15//4
+
+# Mesh 'SketchUp_ID36' with 2 faces
+g SketchUp_ID36
+usemtl material_4
+f  7//5 16//5 14//5
+f  16//5 7//5 6//5
+
+# Mesh 'SketchUp_ID44' with 8 faces
+g SketchUp_ID44
+usemtl material_3
+f  16//6 17//6 18//6
+f  1//6 9//6 4//6
+f  9//6 1//6 19//6
+f  9//6 19//6 20//6
+f  20//6 19//6 17//6
+f  20//6 17//6 8//6
+f  8//6 17//6 6//6
+f  6//6 17//6 16//6
+
+# Mesh 'SketchUp_ID50' with 2 faces
+g SketchUp_ID50
+usemtl material_5
+f  9//2 11//2 10//2
+f  11//2 9//2 20//2
+
+# Mesh 'SketchUp_ID58' with 2 faces
+g SketchUp_ID58
+usemtl material_6
+f  8//3 11//3 20//3
+f  11//3 8//3 5//3
+
+# Mesh 'SketchUp_ID66' with 6 faces
+g SketchUp_ID66
+usemtl material_7
+f  17//3 13//3 18//3
+f  13//3 17//3 12//3
+f  17//1 15//1 12//1
+f  15//1 17//1 19//1
+f  15//5 1//5 3//5
+f  1//5 15//5 19//5
+
+# Mesh 'SketchUp_ID74' with 2 faces
+g SketchUp_ID74
+usemtl material
+f  14//1 18//1 13//1
+f  18//1 14//1 16//1
+
+# Mesh 'SketchUp_ID74' with 2 faces
+g SketchUp_ID74
+usemtl material_0
+f  16//2 14//2 18//2
+f  13//2 18//2 14//2
+
