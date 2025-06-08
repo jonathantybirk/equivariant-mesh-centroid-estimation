@@ -3,11 +3,11 @@
 Clean Lightning CLI Setup - Models inherit directly from BaseModel
 
 Usage:
-    python train_gnn_optimized.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN --data.class_path=PointCloudData
-    python train_gnn_optimized.py fit --model.class_path=src.model.gnn.BasicGNN --data.class_path=PointCloudData
+    python trainer.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN --data.class_path=PointCloudData
+    python trainer.py fit --model.class_path=src.model.gnn.BasicGNN --data.class_path=PointCloudData
 
 With Weights & Biases:
-    python train_gnn_optimized.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN --data.class_path=PointCloudData \
+    python trainer.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN --data.class_path=PointCloudData \
         --trainer.logger.class_path=lightning.pytorch.loggers.WandbLogger \
         --trainer.logger.init_args.project="gnn-optimization"
 """
@@ -24,6 +24,8 @@ from pathlib import Path
 import sys
 from tqdm import tqdm
 from src.model.eq_gnn import EquivariantGNN
+
+# from src.model.eq_gnn_fast import EquivariantGNNFast
 from src.model.gnn import BasicGNN
 
 # Add project root to path
@@ -32,11 +34,14 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 class PointCloudData(pl.LightningDataModule):
     def __init__(
-        self, data_dir="data/processed_sh", batch_size=16, val_split=0.1, num_workers=0
+        self, data_dir="data/processed_sh", batch_size=16, val_split=0.2, num_workers=0
     ):
         super().__init__()
         self.save_hyperparameters()
         self.data_cache = []
+
+    def prepare_data(self):
+        pass
 
     def setup(self, stage=None):
         print(f"Loading dataset from {self.hparams.data_dir}...")
@@ -72,7 +77,7 @@ class PointCloudData(pl.LightningDataModule):
         self.train_data, self.val_data = torch.utils.data.random_split(
             self.data_cache,
             [train_size, len(self.data_cache) - train_size],
-            generator=torch.Generator().manual_seed(43),
+            generator=torch.Generator().manual_seed(42),
         )
 
     def train_dataloader(self):

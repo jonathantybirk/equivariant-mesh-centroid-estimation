@@ -77,36 +77,39 @@ class CGWeight(torch.nn.Module):
     """
 
     def __init__(
-        self, input_a_l, input_h_l, l_out, init_method="xavier", multiplicity=1
+        self, input_a_ls, input_h_ls, output_ls, init_method="xavier", multiplicity=1
     ):
         super(CGWeight, self).__init__()
-        self.input_a_l = input_a_l
-        self.input_h_l = input_h_l
-        self.l_out = l_out
+        self.input_a_ls = input_a_ls
+        self.input_h_ls = input_h_ls
+        self.output_ls = output_ls
         self.multiplicity = multiplicity
-        self.out_dim = 2 * l_out + 1
+        self.out_dim = 2 * output_ls + 1
 
         # Precompute and store all valid CG combinations with coefficients
         self.valid_combos = []
         self.cg_coefficients = []
 
-        for a_l_idx, a_l_in in enumerate(input_a_l):
-            for h_l_idx, h_l_in in enumerate(input_h_l):
+        for intput_a_l_idx, input_a_l in enumerate(input_a_ls):
+            for input_h_l_idx, input_h_l in enumerate(input_h_ls):
                 try:
-                    validate_triangle_inequality(a_l_in, h_l_in, l_out)
+                    validate_triangle_inequality(input_a_l, input_h_l, output_ls)
 
                     # Get CG coefficients - let cache handle device properly
                     cg_coeffs = CGCoefficientsCache.get_coefficients(
-                        a_l_in, h_l_in, l_out, None  # Let cache use appropriate device
+                        input_a_l,
+                        input_h_l,
+                        output_ls,
+                        None,  # Let cache use appropriate device
                     )
 
                     if cg_coeffs is not None and cg_coeffs.abs().sum() > 1e-10:
                         self.valid_combos.append(
                             (
-                                a_l_idx,
-                                h_l_idx,
-                                a_l_in,
-                                h_l_in,
+                                intput_a_l_idx,
+                                input_h_l_idx,
+                                input_a_l,
+                                input_h_l,
                             )  # Removed redundant combo_idx
                         )
                         self.cg_coefficients.append(cg_coeffs)
@@ -115,8 +118,8 @@ class CGWeight(torch.nn.Module):
 
         if len(self.valid_combos) == 0:
             raise ValueError(
-                f"No valid CG combinations possible for input_a_l={input_a_l}, "
-                f"input_h_l={input_h_l}, l_out={l_out}. All combinations violate triangle inequality."
+                f"No valid CG combinations possible for input_a_ls={input_a_ls}, "
+                f"input_h_ls={input_h_ls}, output_ls={output_ls}. All combinations violate triangle inequality."
             )
 
         # Initialize weights parameter - support multiplicities (multiple channels)
@@ -199,18 +202,18 @@ class CGWeight(torch.nn.Module):
 
 class HiddenHLayer(torch.nn.Module):
     def __init__(
-        self, input_a_l, input_h_l, h_l_out, init_method="xavier", multiplicity=1
+        self, input_a_ls, input_h_ls, h_ls_out, init_method="xavier", multiplicity=1
     ):
         super(HiddenHLayer, self).__init__()
         self.multiplicity = multiplicity
         # Use ModuleList instead of regular Python list to properly register parameters
         self.cg_weight = torch.nn.ModuleList(
             [
-                CGWeight(input_a_l, input_h_l, l_out, init_method, multiplicity)
-                for l_out in h_l_out
+                CGWeight(input_a_ls, input_h_ls, l_out, init_method, multiplicity)
+                for l_out in h_ls_out
             ]
         )
-        self.h_l_out = h_l_out
+        self.h_ls_out = h_ls_out
 
     def forward(self, input_a_batch, input_h_batch):
         """
@@ -224,7 +227,7 @@ class HiddenHLayer(torch.nn.Module):
             list of [E, irrep_dim] tensors for each output l value
         """
         outputs = []
-        for i, l_out in enumerate(self.h_l_out):
+        for i, l_out in enumerate(self.h_ls_out):
             # Get vectorized output from CGWeight
             output = self.cg_weight[i].forward(input_a_batch, input_h_batch)
             outputs.append(output)
@@ -233,27 +236,27 @@ class HiddenHLayer(torch.nn.Module):
 
 class MessageFunction(torch.nn.Module):
     def __init__(
-        self, input_a_l, input_h_l, h_l_out, init_method="xavier", multiplicity=1
+        self, input_a_ls, input_h_ls, output_ls, init_method="xavier", l_multiplicity=1
     ):
         super(MessageFunction, self).__init__()
         # Use l-values that can form valid CG coefficients
         # Use same as h_l_out to preserve equivariance
-        self.intermediate_dims = h_l_out
-        self.multiplicity = multiplicity
+        self.intermediate_dims = output_ls
+        self.l_multiplicity = l_multiplicity
         self.hidden_h_layer_1 = HiddenHLayer(
-            input_a_l, input_h_l, self.intermediate_dims, init_method, multiplicity
+            input_a_ls, input_h_ls, self.intermediate_dims, init_method, l_multiplicity
         )
         self.hidden_h_layer_2 = HiddenHLayer(
-            input_a_l,
+            input_a_ls,
             self.intermediate_dims,
             self.intermediate_dims,
             init_method,
-            multiplicity,
+            l_multiplicity,
         )
         self.hidden_h_layer_3 = HiddenHLayer(
-            input_a_l, self.intermediate_dims, h_l_out, init_method, multiplicity
+            input_a_ls, self.intermediate_dims, output_ls, init_method, l_multiplicity
         )
-        self.h_l_out = h_l_out
+        self.h_l_out = output_ls
 
     def forward(self, input_a_batch, input_h_batch):
         """
@@ -281,7 +284,7 @@ class MessageFunction(torch.nn.Module):
 class MessageLayer(nn.Module):
     """Ultra-fast message passing layer - proper equivariance with GPU optimization"""
 
-    def __init__(self, max_sh_degree, irrep_dims, hidden_dim, multiplicity=1):
+    def __init__(self, max_sh_degree, irrep_dims, multiplicity=1):
         super().__init__()
         self.max_sh_degree = max_sh_degree
         self.irrep_dims = (
@@ -446,8 +449,6 @@ class EquivariantGNN(BaseModel):
 
     def __init__(
         self,
-        input_dim=3,
-        hidden_dim=16,
         message_passing_steps=3,
         final_mlp_dims=[64, 32],
         max_sh_degree=1,
@@ -457,13 +458,11 @@ class EquivariantGNN(BaseModel):
         lr=None,
         weight_decay=None,
         multiplicity=2,
-        dropout=0.1,
+        dropout=0.2,
     ):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
 
-        self.input_dim = input_dim
-        self.hidden_dim = hidden_dim
         self.max_sh_degree = max_sh_degree
         self.debug = debug
         self.message_passing_steps = message_passing_steps
@@ -490,7 +489,6 @@ class EquivariantGNN(BaseModel):
                 MessageLayer(
                     max_sh_degree=max_sh_degree,
                     irrep_dims=self.irrep_dims,
-                    hidden_dim=hidden_dim,
                     multiplicity=multiplicity,
                 )
                 for _ in range(message_passing_steps)

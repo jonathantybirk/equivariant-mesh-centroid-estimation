@@ -9,12 +9,11 @@ model:
   #   weight_decay: 1e-5
     # dropout: 0.1
   class_path: EquivariantGNN
+  # class_path: EquivariantGNNFast
   init_args:
     lr: 1e-3
     weight_decay: 1e-5
-    input_dim: 3
-    hidden_dim: 16
-    multiplicity: 4
+    multiplicity: 2
     message_passing_steps: 3
     final_mlp_dims: [64, 32]
     max_sh_degree: 1
@@ -56,10 +55,10 @@ trainer:
         
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
-        monitor: "val_mae"
+        monitor: "val_displacement_distance"
         mode: "min"
         save_top_k: 1
-        filename: "best-{epoch}-{val_mae:.4f}"
+        filename: "best-{epoch}-{val_displacement_distance:.4f}"
         
     # - class_path: lightning.pytorch.callbacks.EarlyStopping
     #   init_args:

@@ -21,72 +21,55 @@ class BaseModel(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         pred = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
 
-        # Use MSE as loss function for better optimization (smooth gradients)
-        loss = F.mse_loss(pred, batch.y)
-
-        # Track MAE as the primary interpretable metric
-        mae = F.l1_loss(pred, batch.y)
-
-        # Per-component MAE for detailed analysis
-        mae_per_component = F.l1_loss(pred, batch.y, reduction="none").mean(dim=0)
+        # Use displacement distance as both loss and metric
+        displacement = pred - batch.y  # Displacement vectors
+        mean_displacement_vector = displacement.mean(
+            dim=0
+        )  # Mean displacement vector [x, y, z]
+        mean_displacement_distance = torch.norm(
+            mean_displacement_vector
+        )  # L2 norm of mean displacement vector
 
         # Log metrics per epoch only (since epochs are fast now)
         batch_size = batch.y.size(0)
         self.log(
-            "train_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            batch_size=batch_size,
-        )
-        self.log(
-            "train_mae",
-            mae,
+            "train_displacement_distance",
+            mean_displacement_distance,
             on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=batch_size,
         )
 
-        # Log per-component MAE
+        # Log per-component displacement
         for i, component in enumerate(["x", "y", "z"]):
             self.log(
-                f"train_mae_{component}",
-                mae_per_component[i],
+                f"train_displacement_{component}",
+                mean_displacement_vector[i],
                 on_step=False,
                 on_epoch=True,
                 batch_size=batch_size,
             )
 
-        return loss
+        return mean_displacement_distance
 
     def validation_step(self, batch, batch_idx):
         pred = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
 
-        # Use MSE as validation loss for consistency with training
-        loss = F.mse_loss(pred, batch.y)
-
-        # Track MAE as the primary interpretable metric
-        mae = F.l1_loss(pred, batch.y)
-
-        # Per-component MAE for detailed analysis
-        mae_per_component = F.l1_loss(pred, batch.y, reduction="none").mean(dim=0)
+        # Use displacement distance for validation consistency
+        displacement = pred - batch.y  # Displacement vectors
+        mean_displacement_vector = displacement.mean(
+            dim=0
+        )  # Mean displacement vector [x, y, z]
+        mean_displacement_distance = torch.norm(
+            mean_displacement_vector
+        )  # L2 norm of mean displacement vector
 
         # Log metrics per epoch only
         batch_size = batch.y.size(0)
         self.log(
-            "val_loss",
-            loss,
-            on_step=False,
-            on_epoch=True,
-            prog_bar=True,
-            batch_size=batch_size,
-            sync_dist=True,
-        )
-        self.log(
-            "val_mae",
-            mae,
+            "val_displacement_distance",
+            mean_displacement_distance,
             on_step=False,
             on_epoch=True,
             prog_bar=True,
@@ -94,18 +77,18 @@ class BaseModel(pl.LightningModule):
             sync_dist=True,
         )
 
-        # Log per-component MAE
+        # Log per-component displacement
         for i, component in enumerate(["x", "y", "z"]):
             self.log(
-                f"val_mae_{component}",
-                mae_per_component[i],
+                f"val_displacement_{component}",
+                mean_displacement_vector[i],
                 on_step=False,
                 on_epoch=True,
                 batch_size=batch_size,
                 sync_dist=True,
             )
 
-        return mae  # Return MAE for monitoring (more interpretable)
+        return mean_displacement_distance  # Return displacement distance for monitoring (more interpretable)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(
@@ -120,25 +103,7 @@ class BaseModel(pl.LightningModule):
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "val_mae",  # Monitor MAE instead of loss for interpretability
+                "monitor": "val_displacement_distance",  # Monitor displacement distance instead of loss for interpretability
                 "frequency": 1,
             },
         }
-
-    def compute_clean_train_mae(self, train_loader):
-        """
-        Diagnostic method: compute training MAE in eval() mode (no dropout/noise)
-        to check if train/val gap is due to regularization during training
-        """
-        self.eval()
-        total_mae = 0.0
-        total_samples = 0
-
-        with torch.no_grad():
-            for batch in train_loader:
-                pred = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-                mae = F.l1_loss(pred, batch.y, reduction="sum")
-                total_mae += mae.item()
-                total_samples += batch.y.size(0)
-
-        return total_mae / total_samples
