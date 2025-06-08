@@ -32,7 +32,6 @@ trainer:
   accelerator: auto
   devices: auto
   precision: 32
-  
   # Weights & Biases logger configuration
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger

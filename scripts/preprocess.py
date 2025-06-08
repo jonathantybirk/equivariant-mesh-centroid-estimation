@@ -1,9 +1,16 @@
+import sys
+import os
+from pathlib import Path
+
+# Add the project root to Python path so we can import from src
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 import hydra
 from omegaconf import DictConfig
 from src.preprocessing.mesh_to_pointcloud import process_all_meshes
 from src.preprocessing.pointcloud_to_graph import process_point_cloud_files
 import numpy as np
-import os
 import glob
 
 
@@ -211,11 +218,23 @@ def main(cfg: DictConfig):
 
     print("Starting preprocessing pipeline...")
 
-    # Step 1: Generate and save point clouds
-    process_all_meshes(cfg)
+    # Use optimized preprocessing by default
+    use_optimized = cfg.get("use_optimized_preprocessing", True)
 
-    # Step 2: Convert saved point clouds to graph data
-    process_point_cloud_files(cfg)
+    if use_optimized:
+        print("Using optimized preprocessing pipeline...")
+        from src.preprocessing.optimized_preprocessing import (
+            run_optimized_preprocessing,
+        )
+
+        run_optimized_preprocessing(cfg)
+    else:
+        print("Using original preprocessing pipeline...")
+        # Step 1: Generate and save point clouds
+        process_all_meshes(cfg)
+
+        # Step 2: Convert saved point clouds to graph data
+        process_point_cloud_files(cfg)
 
     print("Preprocessing pipeline complete!")
 
