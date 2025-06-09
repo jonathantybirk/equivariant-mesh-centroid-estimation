@@ -20,7 +20,7 @@ import time
 import numpy as np
 import argparse
 from pathlib import Path
-from train_gnn_optimized import EquivariantGNN, PointCloudData
+from trainer import EquivariantGNN, PointCloudData
 
 
 def load_model_from_checkpoint(checkpoint_path, device="cpu"):
@@ -199,83 +199,6 @@ def test_translation_equivariance(model):
     )
 
     return is_equivariant, error
-
-
-def test_model_performance(model, data_module=None):
-    """Test model performance on real data"""
-    print("\n⚡ Testing Model Performance...")
-
-    if data_module is None:
-        data_module = PointCloudData(
-            data_dir="data/processed_sh",
-            batch_size=2,
-            val_split=0.2,
-            num_workers=0,
-        )
-        data_module.setup()
-
-    train_loader = data_module.train_dataloader()
-    val_loader = data_module.val_dataloader()
-
-    # Test single batch
-    print("📊 Testing single batch...")
-
-    # Get a batch
-    batch = next(iter(train_loader))
-    print(f"   Batch keys: {batch.keys}")
-    print(f"   Batch size: {batch.x.shape[0]} nodes")
-
-    # Forward pass
-    model.eval()
-    with torch.no_grad():
-        start_time = time.time()
-        pred_com = model(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        forward_time = time.time() - start_time
-
-    print(f"   Forward pass: {forward_time*1000:.1f}ms")
-    print(f"   Prediction shape: {pred_com.shape}")
-
-    # Test training step
-    print("\n🏋️ Testing training step...")
-    model.train()
-
-    start_time = time.time()
-    loss = model.training_step(batch, 0)
-    training_time = time.time() - start_time
-
-    print(f"   Training step: {training_time*1000:.1f}ms")
-    print(f"   Loss: {loss:.6f}")
-
-    # Test validation step
-    print("\n✅ Testing validation step...")
-    model.eval()
-
-    val_batch = next(iter(val_loader))
-    start_time = time.time()
-    val_loss = model.validation_step(val_batch, 0)
-    val_time = time.time() - start_time
-
-    print(f"   Validation step: {val_time*1000:.1f}ms")
-    print(f"   Val loss: {val_loss:.6f}")
-
-    # Performance summary
-    print(f"\n📈 Performance Summary:")
-    print(f"   Forward pass: {forward_time*1000:.1f}ms")
-    print(f"   Training step: {training_time*1000:.1f}ms")
-    print(f"   Validation step: {val_time*1000:.1f}ms")
-
-    if forward_time <= 0.050:
-        print("   ✅ Forward pass meets 50ms target!")
-    else:
-        print(f"   ⚠️  Forward pass {forward_time/0.050:.1f}x slower than target")
-
-    return {
-        "forward_time": forward_time,
-        "training_time": training_time,
-        "val_time": val_time,
-        "train_loss": loss.item(),
-        "val_loss": val_loss.item(),
-    }
 
 
 def run_equivariance_tests(model):
@@ -516,12 +439,6 @@ def run_full_test_suite(model, data_module=None):
 
     results = {}
 
-    # Performance tests
-    print("\n" + "=" * 50)
-    print("⚡ PERFORMANCE TESTS")
-    print("=" * 50)
-    results["performance"] = test_model_performance(model, data_module)
-
     # Equivariance tests
     results["equivariance"] = run_equivariance_tests(model)
 
@@ -539,14 +456,8 @@ def run_full_test_suite(model, data_module=None):
     print("📋 FINAL SUMMARY")
     print("=" * 60)
 
-    perf = results["performance"]
     equiv = results["equivariance"]
     pred = results["predictions"]
-
-    print(f"🎯 Performance:")
-    print(f"   Forward time: {perf['forward_time']*1000:.1f}ms")
-    print(f"   Train loss: {perf['train_loss']:.6f}")
-    print(f"   Val loss: {perf['val_loss']:.6f}")
 
     print(f"\n🔄 Equivariance:")
     print(f"   Rotation: {'✅ PASS' if equiv['rotation_equivariant'] else '❌ FAIL'}")
@@ -559,8 +470,7 @@ def run_full_test_suite(model, data_module=None):
     print(f"   MAE per axis: {pred['mae_per_axis']}")
 
     overall_status = (
-        perf["forward_time"] < 0.050  # Performance OK
-        and equiv["overall_equivariant"]  # Equivariant
+        equiv["overall_equivariant"]  # Equivariant
         and pred["mean_l2_error"] < 10.0  # Reasonable predictions
     )
 

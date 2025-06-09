@@ -1,5 +1,5 @@
 lidar:
-  save: true
+  save: false
   visualize: true
   show_target_lines: true
   export_images: true
@@ -15,4 +15,4 @@ lidar:
   max_lidar_distance_factor: 2.0
   include_missed_rays: false
   seed: 42
-  visualize_first_n: 0  # Number of first pointclouds to visualize during preprocessing (0 = no visualization)
+  visualize_first_n: 10  # Number of first pointclouds to visualize during preprocessing (0 = no visualization)
