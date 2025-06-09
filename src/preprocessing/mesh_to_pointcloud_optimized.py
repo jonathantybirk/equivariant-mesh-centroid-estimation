@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 from hydra.utils import get_original_cwd
 from tqdm import tqdm
 import logging
@@ -9,6 +10,216 @@ from functools import partial
 import pickle
 
 from src.utils import geometry, mesh, lidar
+
+
+def visualize_pointcloud_with_mesh(
+    mesh_obj, pointcloud, center_of_mass, obj_name, camera_positions=None
+):
+    """
+    Visualize a single pointcloud alongside its original mesh with center of mass.
+
+    Args:
+        mesh_obj: Trimesh mesh object
+        pointcloud: Generated pointcloud array (N, 3)
+        center_of_mass: Center of mass coordinates (3,)
+        obj_name: Name of the object for display
+        camera_positions: Optional camera positions array
+    """
+    fig = plt.figure(figsize=(15, 5))
+
+    # Plot 1: Original mesh with center of mass
+    ax1 = fig.add_subplot(131, projection="3d")
+    vertices = mesh_obj.vertices
+    faces = mesh_obj.faces
+
+    # Create mesh collection with transparency
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+    mesh_collection = Poly3DCollection(
+        vertices[faces],
+        alpha=0.3,
+        facecolors="lightgray",
+        edgecolors="gray",
+        linewidths=0.5,
+    )
+    ax1.add_collection3d(mesh_collection)
+
+    # Add center of mass
+    ax1.scatter(
+        center_of_mass[0],
+        center_of_mass[1],
+        center_of_mass[2],
+        c="red",
+        s=100,
+        alpha=1.0,
+        label="Center of Mass",
+    )
+
+    ax1.set_xlabel("X")
+    ax1.set_ylabel("Y")
+    ax1.set_zlabel("Z")
+    ax1.set_title(f"Original Mesh: {obj_name}")
+    ax1.legend()
+
+    # Plot 2: Generated pointcloud
+    ax2 = fig.add_subplot(132, projection="3d")
+    ax2.scatter(
+        pointcloud[:, 0],
+        pointcloud[:, 1],
+        pointcloud[:, 2],
+        c="blue",
+        s=1,
+        alpha=0.6,
+        label=f"Points ({len(pointcloud)})",
+    )
+
+    # Add center of mass to pointcloud view
+    ax2.scatter(
+        center_of_mass[0],
+        center_of_mass[1],
+        center_of_mass[2],
+        c="red",
+        s=100,
+        alpha=1.0,
+        label="Center of Mass",
+    )
+
+    # Add camera positions if available
+    if camera_positions is not None:
+        ax2.scatter(
+            camera_positions[:, 0],
+            camera_positions[:, 1],
+            camera_positions[:, 2],
+            c="green",
+            s=50,
+            marker="^",
+            alpha=0.8,
+            label=f"Cameras ({len(camera_positions)})",
+        )
+
+    ax2.set_xlabel("X")
+    ax2.set_ylabel("Y")
+    ax2.set_zlabel("Z")
+    ax2.set_title(f"Generated Pointcloud: {obj_name}")
+    ax2.legend()
+
+    # Plot 3: Overlay view
+    ax3 = fig.add_subplot(133, projection="3d")
+
+    # Add transparent mesh
+    mesh_collection_overlay = Poly3DCollection(
+        vertices[faces],
+        alpha=0.15,
+        facecolors="lightgray",
+        edgecolors=None,
+        linewidths=0,
+    )
+    ax3.add_collection3d(mesh_collection_overlay)
+
+    # Add pointcloud
+    ax3.scatter(
+        pointcloud[:, 0],
+        pointcloud[:, 1],
+        pointcloud[:, 2],
+        c="blue",
+        s=2,
+        alpha=0.7,
+        label=f"Points ({len(pointcloud)})",
+    )
+
+    # Add center of mass
+    ax3.scatter(
+        center_of_mass[0],
+        center_of_mass[1],
+        center_of_mass[2],
+        c="red",
+        s=100,
+        alpha=1.0,
+        label="Center of Mass",
+    )
+
+    ax3.set_xlabel("X")
+    ax3.set_ylabel("Y")
+    ax3.set_zlabel("Z")
+    ax3.set_title(f"Overlay: {obj_name}")
+    ax3.legend()
+
+    # Set equal aspect ratios for all plots
+    for ax in [ax1, ax2, ax3]:
+        max_range = np.array(
+            [
+                vertices[:, 0].max() - vertices[:, 0].min(),
+                vertices[:, 1].max() - vertices[:, 1].min(),
+                vertices[:, 2].max() - vertices[:, 2].min(),
+            ]
+        ).max() / 2.0
+
+        mid_x = (vertices[:, 0].max() + vertices[:, 0].min()) * 0.5
+        mid_y = (vertices[:, 1].max() + vertices[:, 1].min()) * 0.5
+        mid_z = (vertices[:, 2].max() + vertices[:, 2].min()) * 0.5
+
+        ax.set_xlim(mid_x - max_range, mid_x + max_range)
+        ax.set_ylim(mid_y - max_range, mid_y + max_range)
+        ax.set_zlim(mid_z - max_range, mid_z + max_range)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def visualize_first_n_pointclouds(cfg, n_visualize=3):
+    """
+    Visualize the first N generated pointclouds during preprocessing.
+
+    Args:
+        cfg: Configuration object
+        n_visualize: Number of pointclouds to visualize
+    """
+    print(f"\nVisualizing first {n_visualize} generated pointclouds...")
+
+    original_cwd = get_original_cwd()
+    mesh_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.mesh_dir)
+    output_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.output_dir)
+
+    # Get first N mesh files
+    obj_files = [f for f in os.listdir(mesh_dir) if f.endswith(".obj")][:n_visualize]
+
+    for i, obj_file in enumerate(obj_files):
+        obj_name = os.path.splitext(obj_file)[0]
+        mesh_path = os.path.join(mesh_dir, obj_file)
+        obj_output_dir = os.path.join(output_dir, obj_name)
+
+        try:
+            # Load original mesh
+            mesh_obj = mesh.load_mesh(mesh_path, debug=False)
+
+            # Load generated data
+            com_path = os.path.join(obj_output_dir, "center_of_mass.npy")
+            pointcloud_path = os.path.join(obj_output_dir, "pointcloud_combined.npy")
+            camera_path = os.path.join(obj_output_dir, "camera_positions.npy")
+
+            if not all(os.path.exists(p) for p in [com_path, pointcloud_path]):
+                print(f"Skipping {obj_name} - missing generated data files")
+                continue
+
+            # Load data
+            center_of_mass = np.load(com_path)
+            pointcloud = np.load(pointcloud_path)
+            camera_positions = (
+                np.load(camera_path) if os.path.exists(camera_path) else None
+            )
+
+            print(
+                f"Visualizing {i+1}/{len(obj_files)}: {obj_name} ({len(pointcloud)} points)"
+            )
+
+            # Visualize
+            visualize_pointcloud_with_mesh(
+                mesh_obj, pointcloud, center_of_mass, obj_name, camera_positions
+            )
+
+        except Exception as e:
+            print(f"Error visualizing {obj_name}: {e}")
+            continue
 
 
 def process_mesh_optimized(args):
@@ -219,6 +430,7 @@ def process_all_meshes_optimized(cfg):
         raise FileNotFoundError(f"No .obj files found in {mesh_dir}")
 
     debug = cfg.get("debug", False)
+    visualize_first_n = cfg.preprocessing.lidar.get("visualize_first_n", 0)
 
     # Control logging levels
     if not debug:
@@ -247,10 +459,23 @@ def process_all_meshes_optimized(cfg):
     processed_count = 0
 
     if n_processes == 1:
-        # Serial processing (for debugging)
+        # Serial processing (for debugging and real-time visualization)
         for args in tqdm(args_list, desc="Processing meshes"):
             object_data, obj_idx, total = process_mesh_optimized(args)
             if object_data is not None:
+                # Real-time visualization during processing if requested
+                if visualize_first_n > 0 and processed_count < visualize_first_n:
+                    try:
+                        # Load the original mesh for visualization
+                        mesh_path = args[0]
+                        mesh_obj = mesh.load_mesh(mesh_path, debug=False)
+                        visualize_during_processing(
+                            mesh_obj, object_data, object_data["center_of_mass"], 
+                            object_data["obj_name"], processed_count, visualize_first_n
+                        )
+                    except Exception as e:
+                        print(f"Visualization error for {object_data['obj_name']}: {e}")
+                
                 save_object_data_batch([object_data], cfg)
                 if cfg.preprocessing.lidar.metadata_path:
                     update_metadata_batch([object_data], cfg)
@@ -285,6 +510,14 @@ def process_all_meshes_optimized(cfg):
     print(
         f"Point cloud generation complete. Processed {processed_count}/{len(obj_files)} meshes."
     )
+    
+    # Visualize first N pointclouds if requested
+    if visualize_first_n > 0:
+        if n_processes == 1:
+            print("Real-time visualization was shown during processing.")
+        else:
+            print("Parallel processing was used - showing post-processing visualization...")
+            visualize_first_n_pointclouds(cfg, visualize_first_n)
 
 
 # Maintain backward compatibility
@@ -301,3 +534,27 @@ def process_all_meshes(cfg):
         )
 
         original_process_all_meshes(cfg)
+
+
+def visualize_during_processing(mesh_obj, pointcloud_data, center_of_mass, obj_name, obj_idx, total_objs):
+    """
+    Visualize pointcloud during processing (real-time visualization)
+    
+    Args:
+        mesh_obj: Trimesh mesh object
+        pointcloud_data: Dictionary containing pointcloud and camera data
+        center_of_mass: Center of mass coordinates 
+        obj_name: Name of the object
+        obj_idx: Current object index (0-based)
+        total_objs: Total number of objects being processed
+    """
+    # Extract data from the sample (use first sample if multiple)
+    if pointcloud_data["samples"]:
+        sample_data = pointcloud_data["samples"][0]  # Use first sample
+        pointcloud = sample_data["combined_points"]
+        camera_positions = sample_data["camera_positions"]
+        
+        print(f"Real-time visualization {obj_idx + 1}/{total_objs}: {obj_name} ({len(pointcloud)} points)")
+        
+        # Call the existing visualization function
+        visualize_pointcloud_with_mesh(mesh_obj, pointcloud, center_of_mass, obj_name, camera_positions)
