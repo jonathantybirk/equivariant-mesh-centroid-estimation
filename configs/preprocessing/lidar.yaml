@@ -1,18 +1,20 @@
 lidar:
-  save: false
-  visualize: true
-  show_target_lines: true
-  export_images: true
+  # Existing parameters (keep)
+  save: true
   mesh_dir: data/meshes
   output_dir: data/pointclouds
-  metadata_path: data/processed/metadata.csv
-  h_fov_deg: 90
-  v_fov_deg: 90
-  h_steps: 50
-  v_steps: 50
-  num_cameras: 3
-  num_samples: 1  # Number of different point clouds to generate per mesh with different camera initializations
-  max_lidar_distance_factor: 2.0
-  include_missed_rays: false
+  num_cameras: 2  # 1-6
+  rays_step_x: 30
+  rays_step_y: 30
   seed: 42
-  visualize_first_n: 10  # Number of first pointclouds to visualize during preprocessing (0 = no visualization)
+  
+  # New mesh preprocessing parameters
+  mesh_random_translation_range: 0.5    # Maximum translation distance
+  
+  # New camera parameters  
+  camera_distance: 2.0                  # Fixed distance from origin
+  camera_angle_noise_deg: 20.0          # ±20° noise for non-primary cameras
+  camera_fov_deg: 45.0                  # LIDAR cone angle (replaces h_fov_deg/v_fov_deg)
+  
+  # Individual camera pointcloud files (optional, disabled by default for efficiency)
+  save_individual_cameras: false        # Set to true to save pointcloud_cam1.npy, pointcloud_cam2.npy, etc.

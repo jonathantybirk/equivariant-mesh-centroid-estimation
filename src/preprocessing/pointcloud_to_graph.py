@@ -57,7 +57,7 @@ def build_graph_from_pointcloud(
 
     Args:
         points: (N, 3) array of 3D points.
-        target: (3,) array representing the object's center of mass.
+        target: (3,) array representing the object's mesh centroid.
         k: Number of nearest neighbors for each node.
         use_spherical_harmonics: Whether to compute SH features for edge attributes
         max_sh_degree: Maximum spherical harmonic degree for edge features
@@ -85,13 +85,13 @@ def build_graph_from_pointcloud(
         pointcloud_center = np.mean(points, axis=0)
         points = points - pointcloud_center
 
-        # Also adjust the target center of mass relative to the new centered point cloud
+        # Also adjust the target mesh centroid relative to the new centered point cloud
         target = target - pointcloud_center
 
         if debug:
             print(f"  [NORM] Original point cloud center: {pointcloud_center}")
             print(f"  [NORM] Centered point cloud at origin")
-            print(f"  [NORM] Adjusted target CoM: {target}")
+            print(f"  [NORM] Adjusted target mesh centroid: {target}")
 
     # Build k-nearest neighbor graph using cKDTree for efficiency
     tree = cKDTree(points)
@@ -262,20 +262,30 @@ def process_point_cloud_files(
         if debug:
             print(f"[OBJ] Processing {obj_name}...")
 
-        # Load center of mass (currently in .npy format)
-        com_file = os.path.join(obj_dir, "center_of_mass.npy")
-        if not os.path.exists(com_file):
+        # Load mesh centroid (target) in the new format
+        mesh_centroid_file = os.path.join(obj_dir, "mesh_centroid.npy")
+        if not os.path.exists(mesh_centroid_file):
             if debug:
-                print(f"  [SKIP] Skipping {obj_name}: no center_of_mass.npy")
+                print(f"  [SKIP] Skipping {obj_name}: no mesh_centroid.npy")
             continue
 
-        center_of_mass = np.load(com_file)
+        mesh_centroid = np.load(mesh_centroid_file)
 
-        # Find point cloud files (currently in .npy format)
-        pointcloud_files = glob.glob(os.path.join(obj_dir, "pointcloud_combined*.npy"))
+        # Find point cloud files in the new format
+        pointcloud_files = []
+        
+        # Check for main pointcloud file
+        main_pc_file = os.path.join(obj_dir, "pointcloud.npy")
+        if os.path.exists(main_pc_file):
+            pointcloud_files.append(main_pc_file)
+        
+        # Check for sample-based pointcloud files (if multiple samples exist)
+        sample_pc_files = glob.glob(os.path.join(obj_dir, "pointcloud_sample*.npy"))
+        pointcloud_files.extend(sample_pc_files)
+        
         if not pointcloud_files:
             if debug:
-                print(f"  [SKIP] Skipping {obj_name}: no point cloud files")
+                print(f"  [SKIP] Skipping {obj_name}: no pointcloud files found")
             continue
 
         for pc_file in tqdm(
@@ -290,7 +300,7 @@ def process_point_cloud_files(
             # Convert to graph
             graph_data = build_graph_from_pointcloud(
                 points,
-                center_of_mass,
+                mesh_centroid,
                 k_nn,
                 use_sh,
                 max_sh_degree,
@@ -299,11 +309,21 @@ def process_point_cloud_files(
             )
 
             # Determine output filename - save directly in main directory
-            filename = f"{obj_name}_{os.path.basename(pc_file).replace('.npy', '')}.pt"
-            clean_filename = filename.replace("pointcloud_combined_", "").replace(
-                "pointcloud_combined", ""
-            )
-            output_path = os.path.join(output_dir, clean_filename)
+            pc_basename = os.path.basename(pc_file).replace('.npy', '')
+            
+            # Handle different pointcloud file naming conventions
+            if pc_basename == "pointcloud":
+                # Main pointcloud file
+                filename = f"{obj_name}.pt"
+            elif pc_basename.startswith("pointcloud_sample"):
+                # Sample-based pointcloud file
+                sample_part = pc_basename.replace("pointcloud_sample", "sample")
+                filename = f"{obj_name}_{sample_part}.pt"
+            else:
+                # Fallback for other naming patterns
+                filename = f"{obj_name}_{pc_basename}.pt"
+            
+            output_path = os.path.join(output_dir, filename)
 
             # Save graph data
             torch.save(graph_data, output_path)
@@ -312,7 +332,7 @@ def process_point_cloud_files(
             # Add to metadata
             file_metadata.append(
                 {
-                    "filename": clean_filename,
+                    "filename": filename,
                     "object_name": obj_name,
                     "num_nodes": graph_data["num_nodes"],
                     "num_edges": graph_data["num_edges"],
@@ -325,7 +345,7 @@ def process_point_cloud_files(
             )
 
             if debug:
-                print(f"  [SAVE] Saved: {clean_filename}")
+                print(f"  [SAVE] Saved: {filename}")
 
     # Save metadata file
     import json

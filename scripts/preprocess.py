@@ -154,8 +154,8 @@ def compute_preprocessing_statistics(cfg: DictConfig):
         print("ERROR: Input directory not found for statistics computation")
         return
 
-    # Collect all center of mass data
-    com_data = []
+    # Collect all mesh centroid data
+    centroid_data = []
     object_names = []
 
     # Get list of object directories
@@ -168,38 +168,38 @@ def compute_preprocessing_statistics(cfg: DictConfig):
 
     for obj_name in obj_dirs:
         obj_dir = os.path.join(input_dir, obj_name)
-        com_file = os.path.join(obj_dir, "center_of_mass.npy")
+        centroid_file = os.path.join(obj_dir, "mesh_centroid.npy")
 
-        if os.path.exists(com_file):
+        if os.path.exists(centroid_file):
             try:
-                com = np.load(com_file)
-                com_data.append(com)
+                centroid = np.load(centroid_file)
+                centroid_data.append(centroid)
                 object_names.append(obj_name)
                 if debug:
                     print(
-                        f"   SUCCESS {obj_name}: COM = [{com[0]:.3f}, {com[1]:.3f}, {com[2]:.3f}]"
+                        f"   SUCCESS {obj_name}: Mesh Centroid = [{centroid[0]:.3f}, {centroid[1]:.3f}, {centroid[2]:.3f}]"
                     )
             except Exception as e:
                 if debug:
                     print(f"   FAILED to load {obj_name}: {e}")
 
-    if len(com_data) == 0:
-        print("ERROR: No center of mass data found!")
+    if len(centroid_data) == 0:
+        print("ERROR: No mesh centroid data found!")
         return
 
     # Convert to numpy array for analysis
-    com_array = np.array(com_data)  # Shape: [N, 3]
+    centroid_array = np.array(centroid_data)  # Shape: [N, 3]
 
-    print(f"\nCENTER OF MASS STATISTICS")
+    print(f"\nMESH CENTROID STATISTICS")
     print("=" * 60)
-    print(f"Total objects analyzed: {len(com_data)}")
+    print(f"Total objects analyzed: {len(centroid_data)}")
     print(f"Data directory: {input_dir}")
 
     # Basic statistics
-    print(f"\nCENTER OF MASS COORDINATES")
+    print(f"\nMESH CENTROID COORDINATES")
     print("-" * 40)
     for i, axis in enumerate(["X", "Y", "Z"]):
-        axis_data = com_array[:, i]
+        axis_data = centroid_array[:, i]
         print(f"   {axis}-axis:")
         print(f"      Mean: {np.mean(axis_data):8.4f}")
         print(f"      Std:  {np.std(axis_data):8.4f}")
@@ -207,27 +207,27 @@ def compute_preprocessing_statistics(cfg: DictConfig):
         print(f"      Max:  {np.max(axis_data):8.4f}")
         print(f"      Range:{np.max(axis_data) - np.min(axis_data):8.4f}")
 
-    # Average COM displacement from origin
-    mean_com = np.mean(com_array, axis=0)
-    print(f"\nAVERAGE COM DISPLACEMENT FROM ORIGIN")
+    # Average centroid displacement from origin
+    mean_centroid = np.mean(centroid_array, axis=0)
+    print(f"\nAVERAGE MESH CENTROID DISPLACEMENT FROM ORIGIN")
     print("-" * 40)
     print(
-        f"   Average COM vector: [{mean_com[0]:8.4f}, {mean_com[1]:8.4f}, {mean_com[2]:8.4f}]"
+        f"   Average centroid vector: [{mean_centroid[0]:8.4f}, {mean_centroid[1]:8.4f}, {mean_centroid[2]:8.4f}]"
     )
 
     # Norm of average displacement
-    mean_com_norm = np.linalg.norm(mean_com)
-    print(f"   Average displacement norm: {mean_com_norm:.4f}")
+    mean_centroid_norm = np.linalg.norm(mean_centroid)
+    print(f"   Average displacement norm: {mean_centroid_norm:.4f}")
 
-    # Individual COM norms
-    com_norms = np.linalg.norm(com_array, axis=1)
-    print(f"\nCOM DISTANCE FROM ORIGIN")
+    # Individual centroid norms
+    centroid_norms = np.linalg.norm(centroid_array, axis=1)
+    print(f"\nMESH CENTROID DISTANCE FROM ORIGIN")
     print("-" * 40)
-    print(f"   Mean distance: {np.mean(com_norms):8.4f}")
-    print(f"   Std distance:  {np.std(com_norms):8.4f}")
-    print(f"   Min distance:  {np.min(com_norms):8.4f}")
-    print(f"   Max distance:  {np.max(com_norms):8.4f}")
-    print(f"   Median distance: {np.median(com_norms):6.4f}")
+    print(f"   Mean distance: {np.mean(centroid_norms):8.4f}")
+    print(f"   Std distance:  {np.std(centroid_norms):8.4f}")
+    print(f"   Min distance:  {np.min(centroid_norms):8.4f}")
+    print(f"   Max distance:  {np.max(centroid_norms):8.4f}")
+    print(f"   Median distance: {np.median(centroid_norms):6.4f}")
 
     # Distribution analysis
     print(f"\nDISTRIBUTION ANALYSIS")
@@ -237,28 +237,28 @@ def compute_preprocessing_statistics(cfg: DictConfig):
     percentiles = [10, 25, 50, 75, 90, 95, 99]
     print("   Distance percentiles:")
     for p in percentiles:
-        value = np.percentile(com_norms, p)
+        value = np.percentile(centroid_norms, p)
         print(f"      {p:2d}th: {value:8.4f}")
 
     # Objects closest and farthest from origin
-    min_idx = np.argmin(com_norms)
-    max_idx = np.argmax(com_norms)
+    min_idx = np.argmin(centroid_norms)
+    max_idx = np.argmax(centroid_norms)
 
     print(f"\nEXTREME CASES")
     print("-" * 40)
     print(f"   Closest to origin:")
     print(f"      Object: {object_names[min_idx]}")
     print(
-        f"      COM: [{com_array[min_idx, 0]:.4f}, {com_array[min_idx, 1]:.4f}, {com_array[min_idx, 2]:.4f}]"
+        f"      Centroid: [{centroid_array[min_idx, 0]:.4f}, {centroid_array[min_idx, 1]:.4f}, {centroid_array[min_idx, 2]:.4f}]"
     )
-    print(f"      Distance: {com_norms[min_idx]:.4f}")
+    print(f"      Distance: {centroid_norms[min_idx]:.4f}")
 
     print(f"   Farthest from origin:")
     print(f"      Object: {object_names[max_idx]}")
     print(
-        f"      COM: [{com_array[max_idx, 0]:.4f}, {com_array[max_idx, 1]:.4f}, {com_array[max_idx, 2]:.4f}]"
+        f"      Centroid: [{centroid_array[max_idx, 0]:.4f}, {centroid_array[max_idx, 1]:.4f}, {centroid_array[max_idx, 2]:.4f}]"
     )
-    print(f"      Distance: {com_norms[max_idx]:.4f}")
+    print(f"      Distance: {centroid_norms[max_idx]:.4f}")
 
     # Coordinate system bias analysis
     print(f"\nCOORDINATE SYSTEM ANALYSIS")
@@ -266,7 +266,7 @@ def compute_preprocessing_statistics(cfg: DictConfig):
 
     # Check if there's bias towards positive/negative directions
     for i, axis in enumerate(["X", "Y", "Z"]):
-        axis_data = com_array[:, i]
+        axis_data = centroid_array[:, i]
         positive_count = np.sum(axis_data > 0)
         negative_count = np.sum(axis_data < 0)
         zero_count = np.sum(axis_data == 0)
@@ -286,7 +286,7 @@ def compute_preprocessing_statistics(cfg: DictConfig):
     # Covariance analysis
     print(f"\nCOVARIANCE ANALYSIS")
     print("-" * 40)
-    cov_matrix = np.cov(com_array.T)
+    cov_matrix = np.cov(centroid_array.T)
     print("   Covariance matrix:")
     print("        X        Y        Z")
     for i, axis in enumerate(["X", "Y", "Z"]):
@@ -298,7 +298,7 @@ def compute_preprocessing_statistics(cfg: DictConfig):
     # Correlation analysis
     print(f"\nCORRELATION ANALYSIS")
     print("-" * 40)
-    corr_matrix = np.corrcoef(com_array.T)
+    corr_matrix = np.corrcoef(centroid_array.T)
     print("   Correlation matrix:")
     print("        X        Y        Z")
     for i, axis in enumerate(["X", "Y", "Z"]):
@@ -412,7 +412,7 @@ def compute_preprocessing_statistics(cfg: DictConfig):
     print("=" * 60)
 
 
-@hydra.main(config_path="../configs", config_name="config", version_base=None)
+@hydra.main(config_path="../configs", config_name="preprocess_only", version_base=None)
 def main(cfg: DictConfig):
     """Main preprocessing pipeline"""
     

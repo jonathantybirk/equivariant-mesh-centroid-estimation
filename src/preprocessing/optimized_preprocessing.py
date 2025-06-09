@@ -324,7 +324,7 @@ def optimized_preprocessing_pipeline(cfg):
     print("\nStep 1: Converting meshes to point clouds...")
     
     # Use the mesh_to_pointcloud_optimized module which has better visualization support
-    from src.preprocessing.mesh_to_pointcloud_optimized import process_all_meshes_optimized
+    from src.preprocessing.mesh_to_pointcloud import process_all_meshes_optimized
     process_all_meshes_optimized(cfg)
 
     # Step 2: Optimized point cloud to graph conversion
