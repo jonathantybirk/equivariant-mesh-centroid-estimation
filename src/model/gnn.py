@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch_geometric.nn import MessagePassing
-from ..base_model import BaseModel
+from .base_model import BaseModel
 
 
 class BasicGNN(BaseModel):
@@ -16,6 +16,7 @@ class BasicGNN(BaseModel):
         message_mlp_dims=[70, 140, 20],
         update_mlp_dims=[70],
         final_mlp_dims=[64, 32],
+        dropout=0.0,
         seed=42,
         lr=None,
         weight_decay=None,
@@ -23,27 +24,39 @@ class BasicGNN(BaseModel):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
 
+        self.dropout = dropout
+
         # Initial node embedding
         self.node_encoder = nn.Linear(3, hidden_dim)
+        self.node_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
         # GNN layers
         self.gnn_layers = nn.ModuleList()
+        self.gnn_dropouts = nn.ModuleList()
         for _ in range(message_passing_steps):
             self.gnn_layers.append(
                 GNNLayer(
                     hidden_dim=hidden_dim,
                     message_mlp_dims=message_mlp_dims,
                     update_mlp_dims=update_mlp_dims,
+                    dropout=dropout,
                 )
             )
+            # Add dropout after each GNN layer
+            self.gnn_dropouts.append(
+                nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+            )
 
-        # Final MLP for per-node prediction
+        # Final MLP for per-node prediction with dropout
         final_layers = []
         prev_dim = hidden_dim
 
         for dim in final_mlp_dims:
             final_layers.append(nn.Linear(prev_dim, dim))
             final_layers.append(nn.ReLU())
+            # Add dropout after each hidden layer
+            if dropout > 0:
+                final_layers.append(nn.Dropout(dropout))
             prev_dim = dim
 
         final_layers.append(nn.Linear(prev_dim, 3))  # Output 3D coordinates
@@ -62,14 +75,16 @@ class BasicGNN(BaseModel):
         Returns:
             Center of mass prediction [B, 3] where B is batch size
         """
-        # Apply initial embedding
+        # Apply initial embedding with dropout
         x = self.node_encoder(x)
+        x = self.node_dropout(x)
 
-        # Apply GNN layers
-        for layer in self.gnn_layers:
+        # Apply GNN layers with dropout
+        for layer, dropout_layer in zip(self.gnn_layers, self.gnn_dropouts):
             x = layer(x, edge_index, edge_attr)
+            x = dropout_layer(x)
 
-        # Apply final MLP to get per-node predictions
+        # Apply final MLP to get per-node predictions (dropout included in MLP)
         node_predictions = self.final_mlp(x)
 
         # Average predictions across nodes in each graph
@@ -112,8 +127,10 @@ class GNNLayer(MessagePassing):
     Basic Graph Neural Network layer with message passing
     """
 
-    def __init__(self, hidden_dim, message_mlp_dims, update_mlp_dims):
+    def __init__(self, hidden_dim, message_mlp_dims, update_mlp_dims, dropout=0.0):
         super().__init__(aggr="mean")  # Use mean aggregation
+
+        self.dropout = dropout
 
         # Message MLP - transforms source, target node features and edge attributes
         # Input: [source_features, target_features, edge_attributes]
@@ -124,6 +141,9 @@ class GNNLayer(MessagePassing):
         for dim in message_mlp_dims:
             message_layers.append(nn.Linear(prev_dim, dim))
             message_layers.append(nn.ReLU())
+            # Add dropout in message MLP
+            if dropout > 0:
+                message_layers.append(nn.Dropout(dropout))
             prev_dim = dim
 
         message_layers.append(nn.Linear(prev_dim, hidden_dim))
@@ -137,6 +157,9 @@ class GNNLayer(MessagePassing):
         for dim in update_mlp_dims:
             update_layers.append(nn.Linear(prev_dim, dim))
             update_layers.append(nn.ReLU())
+            # Add dropout in update MLP
+            if dropout > 0:
+                update_layers.append(nn.Dropout(dropout))
             prev_dim = dim
 
         update_layers.append(nn.Linear(prev_dim, hidden_dim))

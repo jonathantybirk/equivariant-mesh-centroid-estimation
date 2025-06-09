@@ -1,0 +1,13 @@
+# Override config to enable Weights & Biases logging
+# Usage: python trainer.py fit --config config_base.yaml --config config_eq_gnn.yaml --config config_eq_gnn_wandb.yaml
+
+trainer:
+  # Enable Weights & Biases logger
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: "gnn-center-of-mass"
+      name: "equivariant-gnn"
+      save_dir: "wandb_logs"
+      log_model: "all"  # Log model checkpoints to W&B
+      tags: ["equivariant", "gnn", "center-of-mass"] 

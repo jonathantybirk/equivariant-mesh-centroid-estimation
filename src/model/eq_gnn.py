@@ -3,7 +3,7 @@ import torch.nn as nn
 from e3nn.o3 import _wigner
 import math
 import time
-from ..base_model import BaseModel
+from .base_model import BaseModel
 
 
 def validate_triangle_inequality(l1, l2, l3):
