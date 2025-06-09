@@ -14,15 +14,6 @@ trainer:
   devices: auto
   precision: 32
   
-  # Weights & Biases logger configuration (commented out by default)
-  # logger:
-  #   class_path: lightning.pytorch.loggers.WandbLogger
-  #   init_args:
-  #     project: "gnn-center-of-mass"
-  #     save_dir: "wandb_logs"
-  #     log_model: "all"
-  #     tags: ["gnn", "center-of-mass"]
-  
   # Common callbacks for all models
   callbacks:
     # Model summary with detailed submodule parameter breakdown

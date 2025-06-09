@@ -15,7 +15,7 @@ python trainer.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN
 ### Training with Weights & Biases
 
 ```bash
-python trainer.py fit --config config.yaml
+python trainer.py fit --config config_base.yaml --config config_eq_gnn.yaml
 ```
 
 ## Available Models
