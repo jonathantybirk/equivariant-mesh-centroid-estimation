@@ -168,7 +168,7 @@ def visualize_single_pointcloud(data, object_name, show_individual_cameras=True)
         ax.scatter(
             camera_target[0], camera_target[1], camera_target[2],
             c='orange', s=200, alpha=1.0, marker='*',
-            label='Camera Target (Origin)', edgecolors='darkorange', linewidth=2
+            label='Camera Target', edgecolors='darkorange', linewidth=2
         )
     
     # Plot camera positions (green spheres)
@@ -231,15 +231,6 @@ def visualize_single_pointcloud(data, object_name, show_individual_cameras=True)
     if camera_target is not None:
         distance_pc_target = np.linalg.norm(pointcloud_centroid - camera_target)
         info_text += f'Camera target: [{camera_target[0]:.3f}, {camera_target[1]:.3f}, {camera_target[2]:.3f}]\n'
-        info_text += f'Distance PC↔Camera target: {distance_pc_target:.4f}\n'
-    
-    if camera_positions is not None:
-        if camera_target is not None:
-            avg_cam_distance = np.mean([np.linalg.norm(cam - camera_target) for cam in camera_positions])
-            info_text += f'Avg camera→target distance: {avg_cam_distance:.3f}'
-        else:
-            avg_cam_distance = np.mean([np.linalg.norm(cam - mesh_centroid) for cam in camera_positions])
-            info_text += f'Avg camera distance: {avg_cam_distance:.3f}'
     
     ax.text2D(0.02, 0.98, info_text, transform=ax.transAxes, fontsize=9,
               verticalalignment='top',
