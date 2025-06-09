@@ -6,12 +6,6 @@ This guide covers the optimized training setup with clean logging and Weights & 
 
 ## Training Commands
 
-### Basic Training (TensorBoard)
-
-```bash
-python trainer.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN
-```
-
 ### Training with Weights & Biases
 
 ```bash
