@@ -198,7 +198,9 @@ def process_pointclouds_to_graphs_optimized(cfg):
     # Output directory based on edge type
     base_output_dir = cfg.preprocessing.processed_dir
     if use_sh:
-        output_dir = os.path.join(base_dir, base_output_dir + "_sh")
+        output_dir = os.path.join(
+            base_dir, base_output_dir + "_sh" + str(max_sh_degree)
+        )
     else:
         output_dir = os.path.join(base_dir, base_output_dir + "_dv")
 

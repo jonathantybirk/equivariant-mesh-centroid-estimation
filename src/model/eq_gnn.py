@@ -65,83 +65,108 @@ class CGCoefficientsCache:
         return None
 
 
-class MessageLayer(nn.Module):
-    """Ultra-fast message passing layer - proper equivariance with GPU optimization"""
+class MultiCGLayer(nn.Module):
+    """
+    Layer that applies multiple CG tensor products in sequence to create richer messages
+    """
 
-    def __init__(self, max_sh_degree, irrep_dims, multiplicity=1):
+    def __init__(
+        self, max_sh_degree, base_l_values, multiplicity, num_cg_layers, debug=False
+    ):
         super().__init__()
         self.max_sh_degree = max_sh_degree
-        self.irrep_dims = (
-            irrep_dims  # [1*mult, 3*mult] for [scalar, vector] with multiplicity
-        )
-        self.base_irrep_dims = [1, 3]  # Base dimensions without multiplicity
+        self.base_l_values = base_l_values
         self.multiplicity = multiplicity
-        self.total_dim = sum(irrep_dims)
+        self.num_cg_layers = num_cg_layers
+        self.debug = debug
 
-        # Learnable weights for each valid CG combination AND multiplicity channel
-        self.weights = nn.ParameterDict()
+        # Create multiple CG layers
+        self.cg_layers = nn.ModuleList()
+        for layer_idx in range(self.num_cg_layers):
+            layer_weights = nn.ParameterDict()
+            # For each layer, precompute CG coefficients and create weights
+            self._setup_cg_layer(layer_idx, layer_weights)
+            self.cg_layers.append(layer_weights)
 
-        # Precompute CG coefficients and find valid combinations
-        self._precompute_layer_cg_coefficients()
+    def _setup_cg_layer(self, layer_idx, layer_weights):
+        """Setup CG coefficients and weights for one layer"""
+        # Store valid combinations for this layer
+        valid_combinations = []
 
-    def _precompute_layer_cg_coefficients(self):
-        """Precompute and store CG coefficients for this layer"""
+        if self.debug:
+            print(f"\n[DEBUG] Setting up CG Layer {layer_idx}")
+            print(f"[DEBUG] max_sh_degree: {self.max_sh_degree}")
+            print(f"[DEBUG] base_l_values: {self.base_l_values}")
+            print(f"[DEBUG] multiplicity: {self.multiplicity}")
 
-        # Map irrep indices to actual l quantum numbers
-        # Use base dimensions for CG coefficient computation
-        irrep_idx_to_l = []
-        for irrep_idx, dim in enumerate(self.base_irrep_dims):
-            # For base_irrep_dims[i], the l value is such that 2*l+1 = dim
-            l = (dim - 1) // 2
-            irrep_idx_to_l.append(l)
-
-        # Store all CG coefficients that we might need
+        # Precompute CG coefficients
         for edge_sh_degree in range(self.max_sh_degree + 1):
-            for node_irrep_idx in range(len(self.base_irrep_dims)):
-                for out_irrep_idx in range(len(self.base_irrep_dims)):
+            for node_irrep_idx in range(len(self.base_l_values)):
+                for out_irrep_idx in range(len(self.base_l_values)):
                     try:
-                        # Convert indices to actual l quantum numbers for triangle inequality
-                        node_l = irrep_idx_to_l[node_irrep_idx]  # 0 -> l=0, 1 -> l=1
-                        out_l = irrep_idx_to_l[out_irrep_idx]  # 0 -> l=0, 1 -> l=1
+                        node_l = self.base_l_values[node_irrep_idx]
+                        out_l = self.base_l_values[out_irrep_idx]
 
-                        # Now validate with actual l values: edge_sh_degree ⊗ node_l → out_l
                         validate_triangle_inequality(edge_sh_degree, node_l, out_l)
 
-                        # Use actual l values for CG computation
                         cg = _wigner._so3_clebsch_gordan(
                             edge_sh_degree, node_l, out_l
                         ).float()
-                        if cg.abs().sum() > 1e-10:
-                            key = (
-                                f"cg_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
-                            )
-                            self.register_buffer(key, cg)
-                    except:
-                        continue
 
-        # Now find valid combinations (after CG coefficients are registered)
-        self.valid_combinations = []
-        for edge_sh_degree in range(self.max_sh_degree + 1):
-            for node_irrep_idx in range(len(self.base_irrep_dims)):
-                for out_irrep_idx in range(len(self.base_irrep_dims)):
-                    cg_key = f"cg_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
-                    # Check if we successfully registered this CG coefficient
-                    for name, _ in self.named_buffers():
-                        if name == cg_key:
-                            self.valid_combinations.append(
+                        if cg.abs().sum() > 1e-10:
+                            # Register CG coefficients as buffer
+                            cg_key = f"cg_{layer_idx}_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
+                            self.register_buffer(cg_key, cg)
+
+                            valid_combinations.append(
                                 (edge_sh_degree, node_irrep_idx, out_irrep_idx)
                             )
+
+                            if self.debug:
+                                print(
+                                    f"[DEBUG] Valid CG: l_edge={edge_sh_degree} ⊗ l_node={node_l} → l_out={out_l} | CG shape: {cg.shape}"
+                                )
+
                             # Create learnable weights for each multiplicity channel
                             for in_channel in range(self.multiplicity):
                                 for out_channel in range(self.multiplicity):
                                     weight_key = f"w_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}_{in_channel}_{out_channel}"
-                                    self.weights[weight_key] = nn.Parameter(
-                                        torch.randn(1) * 1.0
+                                    layer_weights[weight_key] = nn.Parameter(
+                                        torch.randn(1) * 0.1
                                     )
-                            break
+                    except Exception as e:
+                        if self.debug:
+                            node_l = (
+                                self.base_l_values[node_irrep_idx]
+                                if node_irrep_idx < len(self.base_l_values)
+                                else "?"
+                            )
+                            out_l = (
+                                self.base_l_values[out_irrep_idx]
+                                if out_irrep_idx < len(self.base_l_values)
+                                else "?"
+                            )
+                            print(
+                                f"[DEBUG] Invalid CG: l_edge={edge_sh_degree} ⊗ l_node={node_l} → l_out={out_l} | Error: {str(e)}"
+                            )
+                        continue
+
+        # Store valid combinations for this layer
+        setattr(self, f"valid_combinations_{layer_idx}", valid_combinations)
+
+        if self.debug:
+            total_weights = (
+                len(valid_combinations) * self.multiplicity * self.multiplicity
+            )
+            print(
+                f"[DEBUG] Layer {layer_idx}: {len(valid_combinations)} valid CG combinations"
+            )
+            print(f"[DEBUG] Layer {layer_idx}: {total_weights} total learnable weights")
+            print(f"[DEBUG] Valid combinations: {valid_combinations}")
+            print()  # Empty line for readability
 
     def forward(self, node_irreps, edge_index, sh_edge_features):
-        """Ultra-fast message passing with proper equivariance and multiplicity support"""
+        """Apply multiple CG operations in sequence"""
         device = node_irreps.device
         num_nodes = node_irreps.shape[0]
         num_edges = edge_index.shape[1]
@@ -149,64 +174,76 @@ class MessageLayer(nn.Module):
         if num_edges == 0:
             return node_irreps
 
-        # Get source and target indices (these are actual graph structure indices)
-        source_idx = edge_index[0]  # [E] - actual source nodes in graph
-        target_idx = edge_index[1]  # [E] - actual target nodes in graph
+        # Keep track of intermediate results
+        current_features = node_irreps
 
-        # Gather source node features
-        source_features = node_irreps[source_idx]  # [E, total_dim]
+        # Apply each CG layer sequentially
+        for layer_idx in range(self.num_cg_layers):
+            current_features = self._apply_cg_layer(
+                layer_idx, current_features, edge_index, sh_edge_features
+            )
 
-        # Split source features by irrep type AND multiplicity channel
-        # For multiplicity=2: [scalar_ch0, scalar_ch1, vector_ch0, vector_ch1]
+        return current_features
+
+    def _apply_cg_layer(self, layer_idx, node_irreps, edge_index, sh_edge_features):
+        """Apply one CG layer"""
+        device = node_irreps.device
+        num_nodes = node_irreps.shape[0]
+        num_edges = edge_index.shape[1]
+
+        source_idx = edge_index[0]
+        target_idx = edge_index[1]
+        source_features = node_irreps[source_idx]
+
+        # Split source features by irrep type and multiplicity channel
         source_irrep_channels = []
         start_idx = 0
-        for irrep_idx, base_dim in enumerate(self.base_irrep_dims):
-            # Each irrep type has multiplicity channels
+        for irrep_idx, l_value in enumerate(self.base_l_values):
+            base_dim = 2 * l_value + 1  # Compute dimension from l value
             for channel in range(self.multiplicity):
                 end_idx = start_idx + base_dim
                 source_irrep_channels.append(source_features[:, start_idx:end_idx])
                 start_idx = end_idx
 
-        # Initialize output messages by irrep type and channel
+        # Initialize output messages
         message_irrep_channels = []
-        for irrep_idx, base_dim in enumerate(self.base_irrep_dims):
+        for irrep_idx, l_value in enumerate(self.base_l_values):
+            base_dim = 2 * l_value + 1  # Compute dimension from l value
             for channel in range(self.multiplicity):
                 message_irrep_channels.append(
                     torch.zeros(num_edges, base_dim, device=device)
                 )
 
-        # Process valid CG combinations with multiplicity
-        for edge_sh_degree, node_irrep_idx, out_irrep_idx in self.valid_combinations:
-            cg_key = f"cg_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
+        # Get valid combinations and weights for this layer
+        valid_combinations = getattr(self, f"valid_combinations_{layer_idx}")
+        layer_weights = self.cg_layers[layer_idx]
+
+        # Process valid CG combinations
+        for edge_sh_degree, node_irrep_idx, out_irrep_idx in valid_combinations:
+            cg_key = f"cg_{layer_idx}_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
             cg_coeffs = getattr(self, cg_key)
 
             if edge_sh_degree >= len(sh_edge_features):
                 continue
 
-            edge_feat = sh_edge_features[edge_sh_degree]  # [E, 2*edge_sh_degree+1]
+            edge_feat = sh_edge_features[edge_sh_degree]
 
             # Process all channel combinations
             for in_channel in range(self.multiplicity):
                 for out_channel in range(self.multiplicity):
                     weight_key = f"w_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}_{in_channel}_{out_channel}"
-                    weight = self.weights[weight_key]
+                    weight = layer_weights[weight_key]
 
-                    # Get input channel: node_irrep_idx determines base irrep, in_channel determines which channel
                     input_channel_idx = node_irrep_idx * self.multiplicity + in_channel
-                    node_feat = source_irrep_channels[
-                        input_channel_idx
-                    ]  # [E, base_dim]
+                    node_feat = source_irrep_channels[input_channel_idx]
 
-                    # Proper CG tensor product: cg[i,j,k] * edge[i] * node[j] -> out[k]
-                    msg = torch.einsum(
-                        "ijk,ei,ej->ek", cg_coeffs, edge_feat, node_feat
-                    )  # [E, base_dim]
+                    # CG tensor product
+                    msg = torch.einsum("ijk,ei,ej->ek", cg_coeffs, edge_feat, node_feat)
 
-                    # Add to output channel: out_irrep_idx determines base irrep, out_channel determines which channel
                     output_channel_idx = out_irrep_idx * self.multiplicity + out_channel
                     message_irrep_channels[output_channel_idx] += weight * msg
 
-        # Aggregate messages by channel using efficient scatter operations
+        # Aggregate messages
         aggregated_channels = []
         for channel_idx in range(len(message_irrep_channels)):
             base_dim = message_irrep_channels[channel_idx].shape[1]
@@ -214,9 +251,7 @@ class MessageLayer(nn.Module):
             agg_tensor.index_add_(0, target_idx, message_irrep_channels[channel_idx])
             aggregated_channels.append(agg_tensor)
 
-        # Concatenate all channels back into irrep format
-        updated_irreps = torch.cat(aggregated_channels, dim=1)  # [N, total_dim]
-
+        updated_irreps = torch.cat(aggregated_channels, dim=1)
         return updated_irreps
 
 
@@ -233,9 +268,9 @@ class EquivariantGNN(BaseModel):
 
     def __init__(
         self,
-        message_passing_steps=3,
+        message_passing_steps=4,
         final_mlp_dims=[64, 32],
-        max_sh_degree=1,
+        max_sh_degree=4,
         init_method="xavier",
         seed=42,
         debug=False,
@@ -243,6 +278,8 @@ class EquivariantGNN(BaseModel):
         weight_decay=None,
         multiplicity=2,
         dropout=0.2,
+        num_cg_layers=4,
+        base_l_values=[0, 1, 2, 3, 4],
     ):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
@@ -252,28 +289,21 @@ class EquivariantGNN(BaseModel):
         self.message_passing_steps = message_passing_steps
         self.multiplicity = multiplicity
         self.dropout = dropout
-
-        # Fixed irrep structure for center of mass: [0, 1] (scalar + vector)
-        # With multiplicity, each irrep type has multiple channels
-        self.base_irrep_dims = [1, 3]  # l=0: 1 dim, l=1: 3 dims
-        self.irrep_dims = [
-            dim * multiplicity for dim in self.base_irrep_dims
-        ]  # Account for multiplicity
-        self.total_irrep_dim = sum(self.irrep_dims)  # Total with multiplicity
-
-        # Input encoding: Node features start with distance (l=0) and zeros (l=1)
-        # The l=1 features will be built up through message passing from edge spherical harmonics
+        self.num_cg_layers = num_cg_layers
+        self.base_l_values = base_l_values
 
         # Precompute ALL CG coefficients we need and store as buffers
         self._precompute_cg_coefficients()
 
-        # Message passing layers - each reduces and then expands features
+        # Message passing layers using MultiCGLayer
         self.message_layers = nn.ModuleList(
             [
-                MessageLayer(
-                    max_sh_degree=max_sh_degree,
-                    irrep_dims=self.irrep_dims,
-                    multiplicity=multiplicity,
+                MultiCGLayer(
+                    max_sh_degree=self.max_sh_degree,
+                    base_l_values=self.base_l_values,
+                    multiplicity=self.multiplicity,
+                    num_cg_layers=self.num_cg_layers,
+                    debug=self.debug,
                 )
                 for _ in range(self.message_passing_steps)
             ]
@@ -322,25 +352,18 @@ class EquivariantGNN(BaseModel):
         if node_pos is None:
             node_pos = x
 
-        # BRILLIANT APPROACH: Trivial initial node features with multiplicity
-        # Initialize all channels for each irrep type
+        # Initialize node features for each irrep type and multiplicity channel
         initial_features = []
 
-        # l=0 (scalar): Set to 1 for all channels
-        for channel in range(self.multiplicity):
-            scalar_channel = torch.ones(
-                num_nodes, 1, device=device
-            )  # [N, 1] - all same
-            initial_features.append(scalar_channel)
+        for l_value in self.base_l_values:
+            irrep_dim = 2 * l_value + 1  # Compute dimension from l value
+            for channel in range(self.multiplicity):
+                if l_value == 0:  # Scalar features - initialize to 1
+                    irrep_channel = torch.ones(num_nodes, irrep_dim, device=device)
+                else:  # Higher order features - initialize to zeros
+                    irrep_channel = torch.zeros(num_nodes, irrep_dim, device=device)
+                initial_features.append(irrep_channel)
 
-        # l=1 (vector): Initialize as zeros for all channels
-        for channel in range(self.multiplicity):
-            vector_channel = torch.zeros(
-                num_nodes, 3, device=device
-            )  # [N, 3] - start with zeros
-            initial_features.append(vector_channel)
-
-        # Combine into single tensor: [N, total_irrep_dim]
         node_irreps = torch.cat(initial_features, dim=1)  # [N, 2+6] for mult=2
 
         if self.debug:
@@ -363,34 +386,38 @@ class EquivariantGNN(BaseModel):
             final_start = time.time()
 
         # Extract invariant features efficiently - handle multiplicity
-        # For multiplicity=2: [scalar_ch0, scalar_ch1, vector_ch0, vector_ch1]
+        invariant_features_list = []
 
-        # Extract all scalar channels and combine (simple average)
-        scalar_channels = []
-        for channel in range(self.multiplicity):
-            start_idx = channel * 1  # 1 = base scalar dim
-            end_idx = start_idx + 1
-            scalar_channels.append(node_irreps[:, start_idx:end_idx])
-        l0_features = torch.mean(
-            torch.cat(scalar_channels, dim=1), dim=1, keepdim=True
-        )  # [N, 1]
+        # Extract features by l value and compute invariants
+        start_idx = 0
+        for l_idx, l_value in enumerate(self.base_l_values):
+            irrep_dim = 2 * l_value + 1
 
-        # Extract all vector channels and combine (simple average)
-        vector_channels = []
-        vector_start_offset = self.multiplicity * 1  # Skip all scalar channels
-        for channel in range(self.multiplicity):
-            start_idx = vector_start_offset + channel * 3  # 3 = base vector dim
-            end_idx = start_idx + 3
-            vector_channels.append(node_irreps[:, start_idx:end_idx])
-        l1_features = torch.mean(torch.stack(vector_channels, dim=0), dim=0)  # [N, 3]
+            # Extract all channels for this l value
+            l_channels = []
+            for channel in range(self.multiplicity):
+                end_idx = start_idx + irrep_dim
+                l_channels.append(node_irreps[:, start_idx:end_idx])
+                start_idx = end_idx
 
-        # Compute l1 invariants using precomputed CG coefficients
-        l1_invariants = torch.einsum(
-            "ijk,ni,nj->nk", self.cg_l1_l1_l0, l1_features, l1_features
-        )  # [N, 1]
+            # Combine channels (simple average)
+            l_features = torch.mean(
+                torch.stack(l_channels, dim=0), dim=0
+            )  # [N, irrep_dim]
 
-        # Combine invariant features
-        invariant_features = torch.cat([l0_features, l1_invariants], dim=1)  # [N, 2]
+            if l_value == 0:
+                # l=0 features are already invariant
+                invariant_features_list.append(l_features)  # [N, 1]
+            elif l_value == 1:
+                # l=1 features: compute invariant via dot product with self
+                l1_invariants = torch.einsum(
+                    "ijk,ni,nj->nk", self.cg_l1_l1_l0, l_features, l_features
+                )  # [N, 1]
+                invariant_features_list.append(l1_invariants)
+            # For higher l values, we could compute more invariants, but for now just use l=0,1
+
+        # Combine invariant features from l=0 and l=1 only (first two)
+        invariant_features = torch.cat(invariant_features_list[:2], dim=1)  # [N, 2]
 
         # Compute raw logits (no softmax yet)
         raw_logits = self.final_mlp(invariant_features).squeeze(-1)  # [N]

@@ -12,6 +12,120 @@ from src.preprocessing.mesh_to_pointcloud import process_all_meshes
 from src.preprocessing.pointcloud_to_graph import process_point_cloud_files
 import numpy as np
 import glob
+import torch
+from collections import defaultdict, deque
+
+
+def check_connectivity_from_edges(edge_index, num_nodes):
+    """Check if graph is connected using BFS from edge_index tensor"""
+    if num_nodes == 0:
+        return True, 1, []
+
+    # Convert edge_index to adjacency list
+    adj = defaultdict(list)
+    if hasattr(edge_index, "numpy"):
+        edges = edge_index.numpy()
+    else:
+        edges = edge_index
+
+    for i in range(edges.shape[1]):
+        u, v = edges[0, i], edges[1, i]
+        adj[u].append(v)
+        adj[v].append(u)  # Undirected graph
+
+    visited = set()
+    components = []
+
+    for start_node in range(num_nodes):
+        if start_node not in visited:
+            # BFS to find connected component
+            component = []
+            queue = deque([start_node])
+            visited.add(start_node)
+
+            while queue:
+                node = queue.popleft()
+                component.append(node)
+
+                for neighbor in adj[node]:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        queue.append(neighbor)
+
+            components.append(component)
+
+    is_connected = len(components) == 1
+    return is_connected, len(components), [len(comp) for comp in components]
+
+
+def analyze_graph_connectivity(processed_dir, debug=False):
+    """Analyze connectivity of processed graph files"""
+    if not os.path.exists(processed_dir):
+        return None
+
+    pt_files = glob.glob(os.path.join(processed_dir, "*.pt"))
+    if not pt_files:
+        return None
+
+    results = []
+    errors = []
+
+    # Sample up to 50 files for analysis
+    sample_files = pt_files[:50] if len(pt_files) > 50 else pt_files
+
+    for file_path in sample_files:
+        try:
+            data = torch.load(file_path, map_location="cpu", weights_only=False)
+
+            if isinstance(data, dict) and "edge_index" in data:
+                edge_index = data["edge_index"]
+                num_nodes = data.get("num_nodes", int(edge_index.max().item()) + 1)
+
+                # Check connectivity
+                is_connected, num_components, component_sizes = (
+                    check_connectivity_from_edges(edge_index, num_nodes)
+                )
+
+                results.append(
+                    {
+                        "file": os.path.basename(file_path),
+                        "num_nodes": num_nodes,
+                        "num_edges": edge_index.shape[1],
+                        "is_connected": is_connected,
+                        "num_components": num_components,
+                        "component_sizes": component_sizes,
+                        "edge_attr_dim": (
+                            data.get("edge_attr", torch.tensor([])).shape[-1]
+                            if "edge_attr" in data
+                            else 0
+                        ),
+                    }
+                )
+
+                if debug:
+                    status = (
+                        "✓ Connected"
+                        if is_connected
+                        else f"✗ {num_components} components"
+                    )
+                    print(
+                        f"   {os.path.basename(file_path)[:40]:40} | {num_nodes:3d} nodes | {edge_index.shape[1]:4d} edges | {status}"
+                    )
+
+            else:
+                errors.append(
+                    f"Invalid data structure in {os.path.basename(file_path)}"
+                )
+
+        except Exception as e:
+            errors.append(f"Error loading {os.path.basename(file_path)}: {str(e)}")
+
+    return {
+        "total_files": len(pt_files),
+        "analyzed_files": len(sample_files),
+        "results": results,
+        "errors": errors,
+    }
 
 
 def compute_preprocessing_statistics(cfg: DictConfig):
@@ -191,6 +305,106 @@ def compute_preprocessing_statistics(cfg: DictConfig):
         for j in range(3):
             row_str += f"{corr_matrix[i, j]:8.4f} "
         print(row_str)
+
+    # GRAPH CONNECTIVITY ANALYSIS
+    print(f"\nGRAPH CONNECTIVITY ANALYSIS")
+    print("=" * 60)
+
+    # Determine processed graph directory
+    use_sh = cfg.preprocessing.graph.get("use_spherical_harmonics", False)
+    max_sh_degree = cfg.preprocessing.graph.get("max_sh_degree", 1)
+    base_processed_dir = cfg.preprocessing.processed_dir
+
+    if use_sh:
+        processed_dir = os.path.join(
+            base_dir, base_processed_dir + "_sh" + str(max_sh_degree)
+        )
+    else:
+        processed_dir = os.path.join(base_dir, base_processed_dir + "_dv")
+
+    print(f"Analyzing graphs in: {processed_dir}")
+
+    if debug:
+        print("\nDetailed connectivity analysis:")
+
+    connectivity_data = analyze_graph_connectivity(processed_dir, debug=debug)
+
+    if connectivity_data is None:
+        print("ERROR: No processed graph files found for connectivity analysis")
+    else:
+        results = connectivity_data["results"]
+        errors = connectivity_data["errors"]
+
+        print(f"\nCONNECTIVITY STATISTICS")
+        print("-" * 40)
+        print(f"   Total graph files: {connectivity_data['total_files']}")
+        print(f"   Files analyzed: {connectivity_data['analyzed_files']}")
+        print(f"   Successfully loaded: {len(results)}")
+        print(f"   Errors: {len(errors)}")
+
+        if results:
+            connected_count = sum(1 for r in results if r["is_connected"])
+            disconnected_count = len(results) - connected_count
+
+            print(
+                f"\n   Connected graphs: {connected_count} ({100*connected_count/len(results):.1f}%)"
+            )
+            print(
+                f"   Disconnected graphs: {disconnected_count} ({100*disconnected_count/len(results):.1f}%)"
+            )
+
+            # Node/edge statistics
+            node_counts = [r["num_nodes"] for r in results]
+            edge_counts = [r["num_edges"] for r in results]
+            component_counts = [r["num_components"] for r in results]
+
+            print(f"\nGRAPH SIZE STATISTICS")
+            print("-" * 40)
+            print(f"   Nodes per graph:")
+            print(f"      Mean: {np.mean(node_counts):8.1f}")
+            print(f"      Std:  {np.std(node_counts):8.1f}")
+            print(f"      Min:  {np.min(node_counts):8.0f}")
+            print(f"      Max:  {np.max(node_counts):8.0f}")
+
+            print(f"   Edges per graph:")
+            print(f"      Mean: {np.mean(edge_counts):8.1f}")
+            print(f"      Std:  {np.std(edge_counts):8.1f}")
+            print(f"      Min:  {np.min(edge_counts):8.0f}")
+            print(f"      Max:  {np.max(edge_counts):8.0f}")
+
+            print(
+                f"   Avg edges per node: {np.mean(edge_counts)/np.mean(node_counts):8.1f}"
+            )
+
+            # Edge features
+            edge_dims = [r["edge_attr_dim"] for r in results if r["edge_attr_dim"] > 0]
+            if edge_dims:
+                print(
+                    f"   Edge feature dimension: {edge_dims[0]} (spherical harmonics)"
+                )
+
+            print(f"   Components per graph:")
+            print(f"      Mean: {np.mean(component_counts):8.1f}")
+            print(f"      Max:  {np.max(component_counts):8.0f}")
+
+            # Show disconnected examples
+            disconnected = [r for r in results if not r["is_connected"]]
+            if disconnected:
+                print(f"\nDISCONNECTED GRAPH EXAMPLES")
+                print("-" * 40)
+                for r in disconnected[:5]:
+                    print(
+                        f"   {r['file']}: {r['num_components']} components, sizes: {r['component_sizes']}"
+                    )
+
+        # Show errors
+        if errors:
+            print(f"\nERRORS")
+            print("-" * 40)
+            for error in errors[:5]:
+                print(f"   {error}")
+            if len(errors) > 5:
+                print(f"   ... and {len(errors) - 5} more errors")
 
     print(f"\n" + "=" * 60)
     print("PREPROCESSING STATISTICS COMPLETE")

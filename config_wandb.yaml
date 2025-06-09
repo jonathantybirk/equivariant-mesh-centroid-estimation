@@ -13,15 +13,16 @@ model:
   init_args:
     lr: 1e-3
     weight_decay: 1e-5
-    multiplicity: 2
-    message_passing_steps: 3
-    final_mlp_dims: [64, 32]
-    max_sh_degree: 1
+    debug: True
+    # multiplicity: 2
+    # message_passing_steps: 3
+    # final_mlp_dims: [64, 32]
+    # max_sh_degree: 4
 
 # Data configuration (since we specified datamodule_class=PointCloudData, we don't need class_path)
 data:
   # data_dir: "data/processed_dv"
-  data_dir: "data/processed_sh"
+  data_dir: "data/processed_sh4"
   val_split: 0.2
   batch_size: 16
   num_workers: 0
@@ -33,19 +34,19 @@ trainer:
   devices: auto
   precision: 32
   # Weights & Biases logger configuration
-  logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
-    init_args:
-      project: "gnn-center-of-mass"
-      name: "equivariant-gnn-optimized"
-      save_dir: "wandb_logs"
-      log_model: "all"  # Log model checkpoints to W&B
-      tags: ["equivariant", "gnn", "center-of-mass", "optimized"]
+  # logger:
+  #   class_path: lightning.pytorch.loggers.WandbLogger
+  #   init_args:
+  #     project: "gnn-center-of-mass"
+  #     name: "equivariant-gnn-optimized"
+  #     save_dir: "wandb_logs"
+  #     log_model: "all"  # Log model checkpoints to W&B
+  #     tags: ["equivariant", "gnn", "center-of-mass", "optimized"]
   
   # Callbacks for better training
   callbacks:
     # Custom callback to log total parameters to WandB metadata
-    - class_path: src.callbacks.parameter_logger.ParameterCountLogger
+    # - class_path: src.callbacks.parameter_logger.ParameterCountLogger
     
     # Model summary with detailed submodule parameter breakdown
     - class_path: lightning.pytorch.callbacks.ModelSummary
