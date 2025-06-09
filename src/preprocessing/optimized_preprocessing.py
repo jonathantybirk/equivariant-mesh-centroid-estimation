@@ -318,9 +318,12 @@ def optimized_preprocessing_pipeline(cfg):
     """
     print("=== OPTIMIZED PREPROCESSING PIPELINE ===")
 
-    # Step 1: Optimized mesh to point cloud conversion
+    # Step 1: Optimized mesh to point cloud conversion (with visualization support)
     print("\nStep 1: Converting meshes to point clouds...")
-    process_meshes_optimized(cfg)
+    
+    # Use the mesh_to_pointcloud_optimized module which has better visualization support
+    from src.preprocessing.mesh_to_pointcloud_optimized import process_all_meshes_optimized
+    process_all_meshes_optimized(cfg)
 
     # Step 2: Optimized point cloud to graph conversion
     print("\nStep 2: Converting point clouds to graphs...")

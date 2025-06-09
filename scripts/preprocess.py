@@ -7,7 +7,8 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 import hydra
-from omegaconf import DictConfig
+import argparse
+from omegaconf import DictConfig, OmegaConf
 from src.preprocessing.mesh_to_pointcloud import process_all_meshes
 from src.preprocessing.pointcloud_to_graph import process_point_cloud_files
 import numpy as np
@@ -200,6 +201,10 @@ def compute_preprocessing_statistics(cfg: DictConfig):
 @hydra.main(config_path="../configs", config_name="config", version_base=None)
 def main(cfg: DictConfig):
     """Main preprocessing pipeline"""
+    
+    # No need for special argument parsing - use Hydra overrides
+    # Users can now use: preprocessing.lidar.visualize_first_n=N
+    
     debug = cfg.get("debug", False)
 
     if debug:
@@ -214,6 +219,8 @@ def main(cfg: DictConfig):
         print(
             f"   Spherical harmonics: {cfg.preprocessing.graph.get('use_spherical_harmonics', False)}"
         )
+        if cfg.preprocessing.lidar.get("visualize_first_n", 0) > 0:
+            print(f"   Visualizing first: {cfg.preprocessing.lidar.visualize_first_n} pointclouds")
         print("")
 
     print("Starting preprocessing pipeline...")
