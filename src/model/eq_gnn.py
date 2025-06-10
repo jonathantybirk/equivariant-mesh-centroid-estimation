@@ -268,21 +268,22 @@ class EquivariantGNN(BaseModel):
 
     def __init__(
         self,
-        message_passing_steps=4,
-        final_mlp_dims=[64, 32],
-        max_sh_degree=4,
+        message_passing_steps=3,
+        final_mlp_dims=[32, 16],
+        max_sh_degree=2,
         init_method="xavier",
         seed=42,
         debug=False,
-        lr=None,
-        weight_decay=None,
-        multiplicity=2,
-        dropout=0.2,
-        num_cg_layers=4,
-        base_l_values=[0, 1, 2, 3, 4],
+        lr=1e-3,
+        weight_decay=1e-5,
+        multiplicity=1,
+        dropout=0.1,
+        num_cg_layers=2,
+        base_l_values=[0, 1, 2],
     ):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
+        self.init_method = init_method
 
         self.max_sh_degree = max_sh_degree
         self.debug = debug
@@ -311,7 +312,7 @@ class EquivariantGNN(BaseModel):
 
         # Final MLP with proper regularization: invariant features -> scalar weights
         final_layers = []
-        prev_dim = 2  # l=0 scalar + l=1 invariant scalar
+        prev_dim = len(self.base_l_values)  # One invariant per l-value
         for i, dim in enumerate(final_mlp_dims):
             final_layers.append(nn.Linear(prev_dim, dim))
             final_layers.append(
@@ -328,11 +329,37 @@ class EquivariantGNN(BaseModel):
         self._initialize_weights()
 
     def _initialize_weights(self):
-        """Initialize weights for better training stability"""
-        # No need to initialize encoders anymore - they use proper mathematical operations
-        # The scalar encoder is now a fixed norm operation
-        # The vector encoder is now a single learnable scale parameter (already initialized above)
-        pass
+        """Initialize weights for better training stability for the CG layers"""
+        import math
+
+        # Iterate through each message passing layer (MultiCGLayer)
+        for multi_cg_layer in self.message_layers:
+            # multi_cg_layer.cg_layers is a ModuleList of ParameterDict for each CG sub-layer
+            for layer_idx, cg_layer in enumerate(multi_cg_layer.cg_layers):
+                valid_combos = getattr(
+                    multi_cg_layer, f"valid_combinations_{layer_idx}", []
+                )
+                fan_in = len(valid_combos) if valid_combos else 1
+                fan_out = (
+                    self.multiplicity
+                )  # Each weight is a scalar; using multiplicity for scaling
+
+                for key, param in cg_layer.items():
+                    if self.init_method == "xavier":
+                        xavier_init_steerable(param, fan_in, fan_out)
+                    elif self.init_method == "xavier_uniform":
+                        xavier_uniform_init_steerable(param, fan_in, fan_out)
+                    elif self.init_method == "constant":
+                        with torch.no_grad():
+                            param.fill_(0.1)
+                    elif self.init_method == "uniform":
+                        bound = 1.0 / math.sqrt(fan_in) if fan_in > 0 else 0.1
+                        with torch.no_grad():
+                            param.uniform_(-bound, bound)
+                    elif self.init_method == "kaiming":
+                        std = math.sqrt(2.0 / fan_in) if fan_in > 0 else 0.1
+                        with torch.no_grad():
+                            param.normal_(0, std)
 
     def _precompute_cg_coefficients(self):
         """Precompute and register all CG coefficients as buffers"""
@@ -406,18 +433,19 @@ class EquivariantGNN(BaseModel):
             )  # [N, irrep_dim]
 
             if l_value == 0:
-                # l=0 features are already invariant
-                invariant_features_list.append(l_features)  # [N, 1]
-            elif l_value == 1:
-                # l=1 features: compute invariant via dot product with self
-                l1_invariants = torch.einsum(
-                    "ijk,ni,nj->nk", self.cg_l1_l1_l0, l_features, l_features
+                # l=0 features are already invariant - take mean across channels
+                invariant_features_list.append(
+                    l_features.mean(dim=1, keepdim=True)
                 )  # [N, 1]
-                invariant_features_list.append(l1_invariants)
-            # For higher l values, we could compute more invariants, but for now just use l=0,1
+            else:
+                # For l>0: compute invariant via norm (rotation-invariant)
+                l_norm = torch.norm(l_features, dim=1, keepdim=True)  # [N, 1]
+                invariant_features_list.append(l_norm)
 
-        # Combine invariant features from l=0 and l=1 only (first two)
-        invariant_features = torch.cat(invariant_features_list[:2], dim=1)  # [N, 2]
+        # Combine all invariant features
+        invariant_features = torch.cat(
+            invariant_features_list, dim=1
+        )  # [N, len(base_l_values)]
 
         # Compute raw logits (no softmax yet)
         raw_logits = self.final_mlp(invariant_features).squeeze(-1)  # [N]

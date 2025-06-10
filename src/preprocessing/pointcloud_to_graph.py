@@ -273,16 +273,16 @@ def process_point_cloud_files(
 
         # Find point cloud files in the new format
         pointcloud_files = []
-        
+
         # Check for main pointcloud file
         main_pc_file = os.path.join(obj_dir, "pointcloud.npy")
         if os.path.exists(main_pc_file):
             pointcloud_files.append(main_pc_file)
-        
+
         # Check for sample-based pointcloud files (if multiple samples exist)
         sample_pc_files = glob.glob(os.path.join(obj_dir, "pointcloud_sample*.npy"))
         pointcloud_files.extend(sample_pc_files)
-        
+
         if not pointcloud_files:
             if debug:
                 print(f"  [SKIP] Skipping {obj_name}: no pointcloud files found")
@@ -309,8 +309,8 @@ def process_point_cloud_files(
             )
 
             # Determine output filename - save directly in main directory
-            pc_basename = os.path.basename(pc_file).replace('.npy', '')
-            
+            pc_basename = os.path.basename(pc_file).replace(".npy", "")
+
             # Handle different pointcloud file naming conventions
             if pc_basename == "pointcloud":
                 # Main pointcloud file
@@ -322,7 +322,7 @@ def process_point_cloud_files(
             else:
                 # Fallback for other naming patterns
                 filename = f"{obj_name}_{pc_basename}.pt"
-            
+
             output_path = os.path.join(output_dir, filename)
 
             # Save graph data

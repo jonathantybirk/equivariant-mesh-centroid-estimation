@@ -12,6 +12,12 @@ This guide covers the optimized training setup with clean logging and Weights & 
 python trainer.py fit --config config_base.yaml --config config_eq_gnn.yaml
 ```
 
+or with wandb
+
+```bash
+python trainer.py fit --config config_base.yaml --config config_eq_gnn.yaml --config config_wandb.yaml
+```
+
 ## Available Models
 
 1. **EquivariantGNN**: The optimized equivariant model (recommended)

@@ -1,0 +1,9 @@
+# EquivariantGNN model configuration - to be used with config_base.yaml
+# Usage: python trainer.py fit --config config_base.yaml --config config_eq_gnn.yaml
+
+model:
+  class_path: BaselineZero
+  init_args: {}
+
+data:
+  data_dir: "data/processed_dv"

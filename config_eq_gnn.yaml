@@ -4,15 +4,15 @@
 model:
   class_path: EquivariantGNN
   init_args:
-    lr: 1e-3
-    weight_decay: 1e-5
+    lr: 1e-2
+    weight_decay: 0
     multiplicity: 2
     message_passing_steps: 3
     max_sh_degree: 2
     base_l_values: [0, 1, 2]
-    num_cg_layers: 4
+    num_cg_layers: 2
     final_mlp_dims: [64, 32]
-    dropout: 0.2
+    dropout: 0
     debug: false
 
 data:

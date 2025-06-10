@@ -27,6 +27,7 @@ from src.model.eq_gnn import EquivariantGNN
 
 # from src.model.eq_gnn_fast import EquivariantGNNFast
 from src.model.gnn import BasicGNN
+from src.model.baseline_zero import BaselineZero
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
