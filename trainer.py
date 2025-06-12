@@ -17,8 +17,8 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import torch
-import lightning.pytorch as pl
-from lightning.pytorch.cli import LightningCLI
+import pytorch_lightning as pl
+from pytorch_lightning.cli import LightningCLI
 from torch_geometric.data import Data, DataLoader
 from pathlib import Path
 import sys
@@ -28,6 +28,7 @@ from src.model.eq_gnn import EquivariantGNN
 # from src.model.eq_gnn_fast import EquivariantGNNFast
 from src.model.gnn import BasicGNN
 from src.model.baseline_zero import BaselineZero
+from src.model.baselines import CentroidBaseline, ConvexHullCentroidBaseline
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -125,5 +126,5 @@ if __name__ == "__main__":
 
     # Lightning CLI with no restrictions (auto-discovery)
     cli = LightningCLI(
-        save_config_kwargs={"overwrite": True}, datamodule_class=PointCloudData
+        save_config_kwargs={"overwrite": True}
     )

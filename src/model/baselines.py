@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class BaseGeometricBaseline(pl.LightningModule):
     def __init__(self):
         super().__init__()
-        self.automatic_optimization = False # Disable automatic optimization
+        self.automatic_optimization = False # Disable automatic optimization`
 
     def forward(self, data: Batch) -> torch.Tensor:
         raise NotImplementedError

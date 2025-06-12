@@ -73,13 +73,13 @@ Two geometric baselines are available for comparison:
 Train the centroid baseline:
 
 ```bash
-invoke train --model-module=src.model.centroid_baseline.CentroidBaseline --name=centroid_baseline
+invoke train --model-module=src.model.baselines.CentroidBaseline --name=centroid_baseline
 ```
 
 Train the convex hull centroid baseline:
 
 ```bash
-invoke train --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseline --name=convex_hull_baseline
+invoke train --model-module=src.model.baselines.ConvexHullCentroidBaseline --name=convex_hull_baseline
 ```
 
 ### Evaluating a Baseline
@@ -87,13 +87,13 @@ invoke train --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseli
 Evaluate a trained centroid baseline:
 
 ```bash
-invoke evaluate --name=centroid_baseline --model-module=src.model.centroid_baseline.CentroidBaseline
+invoke evaluate --name=centroid_baseline --model-module=src.model.baselines.CentroidBaseline
 ```
 
 Evaluate a trained convex hull centroid baseline:
 
 ```bash
-invoke evaluate --name=convex_hull_baseline --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseline
+invoke evaluate --name=convex_hull_baseline --model-module=src.model.baselines.ConvexHullCentroidBaseline
 ```
 
 These baselines do not require hyperparameters. The convex hull baseline requires scipy (install with `pip install scipy`).

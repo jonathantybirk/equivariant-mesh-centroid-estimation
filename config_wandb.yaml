@@ -4,7 +4,7 @@
 trainer:
   # Enable Weights & Biases logger
   logger:
-    class_path: lightning.pytorch.loggers.WandbLogger
+    class_path: pytorch_lightning.loggers.WandbLogger
     init_args:
       project: "gnn-center-of-mass"
       name: "equivariant-gnn"

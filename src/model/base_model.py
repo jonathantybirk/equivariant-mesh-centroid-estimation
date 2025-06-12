@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-import lightning.pytorch as pl
+import pytorch_lightning as pl
 
 
 class BaseModel(pl.LightningModule):

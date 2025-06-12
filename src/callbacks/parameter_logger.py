@@ -2,8 +2,8 @@
 Custom callback to log total learnable parameters to WandB metadata
 """
 
-import lightning.pytorch as pl
-from lightning.pytorch.utilities import rank_zero_only
+import pytorch_lightning as pl
+from pytorch_lightning.utilities import rank_zero_only
 
 
 class ParameterCountLogger(pl.Callback):

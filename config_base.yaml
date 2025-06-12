@@ -17,11 +17,11 @@ trainer:
   # Common callbacks for all models
   callbacks:
     # Model summary with detailed submodule parameter breakdown
-    - class_path: lightning.pytorch.callbacks.ModelSummary
+    - class_path: pytorch_lightning.callbacks.ModelSummary
       init_args:
         max_depth: -1  # Show ALL submodules
         
-    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
       init_args:
         monitor: "val_displacement_distance"
         mode: "min"
@@ -29,14 +29,14 @@ trainer:
         filename: "best-{epoch}-{val_displacement_distance:.4f}"
         
     # Optional: Early stopping (commented out by default)
-    - class_path: lightning.pytorch.callbacks.EarlyStopping
+    - class_path: pytorch_lightning.callbacks.EarlyStopping
       init_args:
         monitor: "val_displacement_distance"
         mode: "min"
         patience: 20
         min_delta: 1e-6
         
-    - class_path: lightning.pytorch.callbacks.LearningRateMonitor
+    - class_path: pytorch_lightning.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
     - class_path: src.callbacks.parameter_logger.ParameterCountLogger

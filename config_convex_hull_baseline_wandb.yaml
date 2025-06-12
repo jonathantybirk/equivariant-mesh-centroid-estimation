@@ -1,0 +1,55 @@
+# Convex Hull Baseline with WandB logging
+# Usage: python trainer.py fit --config config_convex_hull_baseline_wandb.yaml
+
+model:
+  class_path: ConvexHullCentroidBaseline
+  init_args: {}
+
+# Data configuration - Use pointcloud data directly
+data:
+  class_path: src.data.pointcloud_baseline_data.PointCloudBaselineDataModule
+  init_args:
+    data_dir: "data/pointclouds"
+    batch_size: 16
+    val_split: 0.2
+    num_workers: 0
+
+# Trainer configuration with WandB
+trainer:
+  max_epochs: 25
+  accelerator: auto
+  devices: auto
+  precision: 32
+  
+  # WandB logger
+  logger:
+    class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      project: "gnn-center-of-mass"
+      name: "convex-hull-baseline"
+      save_dir: "wandb_logs"
+      log_model: "all"
+      tags: ["baseline", "convex-hull", "center-of-mass"]
+  
+  # Common callbacks
+  callbacks:
+    - class_path: pytorch_lightning.callbacks.ModelSummary
+      init_args:
+        max_depth: -1
+        
+    - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+      init_args:
+        monitor: "val_loss"
+        mode: "min"
+        save_top_k: 1
+        filename: "convex-hull-baseline-{epoch}-{val_loss:.4f}"
+        
+    - class_path: pytorch_lightning.callbacks.EarlyStopping
+      init_args:
+        monitor: "val_loss"
+        mode: "min"
+        patience: 10
+        min_delta: 1e-6
+        
+    - class_path: src.callbacks.parameter_logger.ParameterCountLogger
+      init_args: {}
