@@ -222,16 +222,16 @@ def process_pointclouds_to_graphs_optimized(cfg):
     args_list = []
     for obj_name in obj_dirs:
         obj_dir = os.path.join(input_dir, obj_name)
-        com_file = os.path.join(obj_dir, "center_of_mass.npy")
+        target_file = os.path.join(obj_dir, "mesh_centroid.npy")
 
-        if not os.path.exists(com_file):
+        if not os.path.exists(target_file):
             continue
 
-        pointcloud_files = glob.glob(os.path.join(obj_dir, "pointcloud_combined*.npy"))
+        pointcloud_files = glob.glob(os.path.join(obj_dir, "pointcloud.npy"))
         if not pointcloud_files:
             continue
 
-        center_of_mass = np.load(com_file)
+        center_of_mass = np.load(target_file)
 
         for pc_file in pointcloud_files:
             args_list.append(
@@ -248,7 +248,7 @@ def process_pointclouds_to_graphs_optimized(cfg):
             )
 
     # Process in parallel
-    n_processes = min(cpu_count() - 1, len(args_list))
+    n_processes = max(min(cpu_count() - 1, len(args_list)), 1)
     print(f"Processing {len(args_list)} point clouds using {n_processes} processes...")
 
     with Pool(processes=n_processes) as pool:
@@ -347,7 +347,7 @@ def process_meshes_optimized(cfg):
         raise FileNotFoundError(f"No .obj files found in {mesh_dir}")
 
     # Determine batch size and number of processes
-    n_processes = min(cpu_count() - 1, 8)  # Cap at 8 processes for memory
+    n_processes = max(min(cpu_count() - 1, 8), 1)  # Cap at 8 processes for memory
     batch_size = max(1, len(obj_files) // (n_processes * 4))  # 4 batches per process
 
     print(
