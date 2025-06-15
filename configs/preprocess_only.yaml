@@ -14,6 +14,13 @@ seed: 42
 debug: false
 use_optimized_preprocessing: true
 
+# Skip flags for preprocessing steps
+skip_pointcloud: false
+skip_graph: false
+
+# Save control
+no_save: false  # Set to true to disable all saving operations
+
 # Hydra configuration settings
 hydra:
   run:

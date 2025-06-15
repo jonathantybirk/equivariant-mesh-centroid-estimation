@@ -194,6 +194,7 @@ def process_pointclouds_to_graphs_optimized(cfg):
     use_sh = cfg.preprocessing.graph.get("use_spherical_harmonics", False)
     max_sh_degree = cfg.preprocessing.graph.get("max_sh_degree", 1)
     normalize_pointcloud = cfg.preprocessing.graph.get("normalize_pointcloud", True)
+    save_enabled = cfg.preprocessing.lidar.get("save", True)
 
     # Output directory based on edge type
     base_output_dir = cfg.preprocessing.processed_dir
@@ -204,11 +205,15 @@ def process_pointclouds_to_graphs_optimized(cfg):
     else:
         output_dir = os.path.join(base_dir, base_output_dir + "_dv")
 
-    os.makedirs(output_dir, exist_ok=True)
+    if save_enabled:
+        os.makedirs(output_dir, exist_ok=True)
 
     print(f"Converting point clouds to graphs...")
     print(f"   Input: {input_dir}")
-    print(f"   Output: {output_dir}")
+    if save_enabled:
+        print(f"   Output: {output_dir}")
+    else:
+        print(f"   Output: [No-save mode - graphs will not be saved]")
     print(
         f"   Edge type: {'Spherical Harmonics' if use_sh else 'Displacement Vectors'}"
     )
@@ -244,6 +249,7 @@ def process_pointclouds_to_graphs_optimized(cfg):
                     max_sh_degree,
                     normalize_pointcloud,
                     output_dir,
+                    save_enabled,
                 )
             )
 
@@ -262,9 +268,14 @@ def process_pointclouds_to_graphs_optimized(cfg):
 
     # Count successful conversions
     successful = sum(1 for r in results if r is not None)
-    print(
-        f"Successfully converted {successful}/{len(args_list)} point clouds to graphs"
-    )
+    if save_enabled:
+        print(
+            f"Successfully converted {successful}/{len(args_list)} point clouds to graphs"
+        )
+    else:
+        print(
+            f"Successfully processed {successful}/{len(args_list)} point clouds (no-save mode)"
+        )
 
 
 def process_single_pointcloud_to_graph(args):
@@ -280,6 +291,7 @@ def process_single_pointcloud_to_graph(args):
         max_sh_degree,
         normalize_pointcloud,
         output_dir,
+        save_enabled,
     ) = args
 
     try:
@@ -302,10 +314,11 @@ def process_single_pointcloud_to_graph(args):
         clean_filename = filename.replace("pointcloud_combined_", "").replace(
             "pointcloud_combined", ""
         )
-        output_path = os.path.join(output_dir, clean_filename)
-
-        # Save graph data
-        torch.save(graph_data, output_path)
+        
+        # Only save if saving is enabled
+        if save_enabled:
+            output_path = os.path.join(output_dir, clean_filename)
+            torch.save(graph_data, output_path)
 
         return clean_filename
 
@@ -321,16 +334,20 @@ def optimized_preprocessing_pipeline(cfg):
     print("=== OPTIMIZED PREPROCESSING PIPELINE ===")
 
     # Step 1: Optimized mesh to point cloud conversion (with visualization support)
-    print("\nStep 1: Converting meshes to point clouds...")
-
-    # Use the mesh_to_pointcloud_optimized module which has better visualization support
-    from src.preprocessing.mesh_to_pointcloud import process_all_meshes_optimized
-
-    process_all_meshes_optimized(cfg)
+    if not cfg.get("skip_pointcloud", False):
+        print("\nStep 1: Converting meshes to point clouds...")
+        # Use the mesh_to_pointcloud_optimized module which has better visualization support
+        from src.preprocessing.mesh_to_pointcloud import process_all_meshes_optimized
+        process_all_meshes_optimized(cfg)
+    else:
+        print("\nStep 1: Skipping point cloud generation...")
 
     # Step 2: Optimized point cloud to graph conversion
-    print("\nStep 2: Converting point clouds to graphs...")
-    process_pointclouds_to_graphs_optimized(cfg)
+    if not cfg.get("skip_graph", False):
+        print("\nStep 2: Converting point clouds to graphs...")
+        process_pointclouds_to_graphs_optimized(cfg)
+    else:
+        print("\nStep 2: Skipping graph generation...")
 
     print("\n=== PREPROCESSING COMPLETE ===")
 

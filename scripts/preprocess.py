@@ -416,8 +416,15 @@ def compute_preprocessing_statistics(cfg: DictConfig):
 def main(cfg: DictConfig):
     """Main preprocessing pipeline"""
     
-    # No need for special argument parsing - use Hydra overrides
-    # Users can now use: preprocessing.lidar.visualize_first_n=N
+    # Get skip flags from config
+    skip_pointcloud = cfg.get("skip_pointcloud", False)
+    skip_graph = cfg.get("skip_graph", False)
+    no_save = cfg.get("no_save", False)
+    
+    # Override save settings if no_save is enabled
+    if no_save:
+        cfg.preprocessing.lidar.save = False
+        print("No-save mode enabled - data will not be saved to disk")
     
     debug = cfg.get("debug", False)
 
@@ -430,11 +437,17 @@ def main(cfg: DictConfig):
         print(f"   Number of cameras: {cfg.preprocessing.lidar.num_cameras}")
         print(f"   Number of samples: {cfg.preprocessing.lidar.get('num_samples', 1)}")
         print(f"   k-NN neighbors: {cfg.preprocessing.graph.k_nn}")
-        print(
-            f"   Spherical harmonics: {cfg.preprocessing.graph.get('use_spherical_harmonics', False)}"
-        )
+        print(f"   Spherical harmonics: {cfg.preprocessing.graph.get('use_spherical_harmonics', False)}")
         if cfg.preprocessing.lidar.get("visualize_first_n", 0) > 0:
             print(f"   Visualizing first: {cfg.preprocessing.lidar.visualize_first_n} pointclouds")
+        print(f"   Save enabled: {cfg.preprocessing.lidar.save}")
+        print("")
+        if skip_pointcloud:
+            print("   Skipping point cloud generation")
+        if skip_graph:
+            print("   Skipping graph generation")
+        if no_save:
+            print("   No-save mode enabled")
         print("")
 
     print("Starting preprocessing pipeline...")
@@ -444,18 +457,21 @@ def main(cfg: DictConfig):
 
     if use_optimized:
         print("Using optimized preprocessing pipeline...")
-        from src.preprocessing.optimized_preprocessing import (
-            run_optimized_preprocessing,
-        )
-
+        from src.preprocessing.optimized_preprocessing import run_optimized_preprocessing
         run_optimized_preprocessing(cfg)
     else:
         print("Using original preprocessing pipeline...")
-        # Step 1: Generate and save point clouds
-        process_all_meshes(cfg)
+        # Step 1: Generate and save point clouds (if not skipped)
+        if not skip_pointcloud:
+            process_all_meshes(cfg)
+        else:
+            print("Skipping point cloud generation step...")
 
-        # Step 2: Convert saved point clouds to graph data
-        process_point_cloud_files(cfg)
+        # Step 2: Convert saved point clouds to graph data (if not skipped)
+        if not skip_graph:
+            process_point_cloud_files(cfg)
+        else:
+            print("Skipping graph generation step...")
 
     print("Preprocessing pipeline complete!")
 
