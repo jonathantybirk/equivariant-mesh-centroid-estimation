@@ -34,7 +34,7 @@ class BaseModel(pl.LightningModule):
         self.log(
             "train_displacement_distance",
             mean_displacement_distance,
-            on_step=True,
+            on_step=False,
             on_epoch=True,
             prog_bar=True,
             batch_size=batch_size,
