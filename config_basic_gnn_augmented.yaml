@@ -1,0 +1,20 @@
+# BasicGNN model configuration with rotation augmentation - to be used with config_base.yaml
+# Usage: python trainer.py fit --config config_base.yaml --config config_basic_gnn_augmented.yaml
+
+model:
+  class_path: BasicGNN
+  init_args:
+    lr: 1e-3
+    weight_decay: 1e-5
+    hidden_dim: 128
+    message_passing_steps: 4
+    message_mlp_dims: [140, 280, 40]  # Larger MLPs for better capacity
+    update_mlp_dims: [140]
+    final_mlp_dims: [64, 32]
+    dropout: 0.1  # Add dropout for regularization
+
+# Data configuration with rotation augmentation
+data:
+  data_dir: "data/processed_dv"
+  use_augmentation: true
+  rotation_prob: 0.5           # Probability of applying random rotation 

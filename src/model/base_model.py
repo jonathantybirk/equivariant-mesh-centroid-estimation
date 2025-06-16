@@ -95,7 +95,7 @@ class BaseModel(pl.LightningModule):
             weight_decay=self.hparams.weight_decay,
         )
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=10, verbose=True, min_lr=1e-6
+            optimizer, mode="min", factor=0.5, patience=10, min_lr=1e-6
         )
         return {
             "optimizer": optimizer,

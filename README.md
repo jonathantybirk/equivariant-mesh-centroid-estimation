@@ -61,6 +61,26 @@ python trainer.py fit --config config.yaml
 
 Find all the options in config.yaml
 
+#### Data Augmentation for Base GNN Models
+
+For non-equivariant models, you can enable data augmentation to improve performance:
+
+```bash
+# Train BasicGNN with rotation augmentation (recommended for graph models)
+python trainer.py fit --config config_base.yaml --config config_basic_gnn_augmented.yaml
+
+# Or specify augmentation parameters directly
+python trainer.py fit --model.class_path=BasicGNN --data.use_augmentation=true --data.rotation_prob=0.7
+```
+
+Data augmentation parameters:
+- `use_augmentation`: Enable/disable data augmentation (default: false)
+- `rotation_prob`: Probability of applying random rotation (default: 0.5)
+
+**Note**: The augmentation applies only rotation transformations, which is recommended for graph-based models since the important information is in the **edge relationships** (3D vectors between connected points), not absolute positions. Rotation preserves all geometric relationships while making the model rotation-invariant.
+
+**Note**: Data augmentation is applied only to training data, not validation data. This is particularly useful for comparing base GNN models with equivariant models that have inherent rotation invariance.
+
 ## Geometric Baselines
 
 Two geometric baselines are available for comparison:

@@ -23,7 +23,9 @@ from torch_geometric.data import Data, DataLoader
 from pathlib import Path
 import sys
 from tqdm import tqdm
+import numpy as np
 from src.model.eq_gnn import EquivariantGNN
+
 
 # from src.model.eq_gnn_fast import EquivariantGNNFast
 from src.model.gnn import BasicGNN
@@ -34,9 +36,66 @@ from src.model.eq_e3nn import EquivariantE3NN
 sys.path.insert(0, str(Path(__file__).parent))
 
 
+def random_rotation_matrix():
+    """Generate a random 3D rotation matrix using Rodrigues' rotation formula."""
+    # Random axis (normalized)
+    axis = torch.randn(3)
+    axis = axis / torch.norm(axis)
+    
+    # Random angle between 0 and 2π
+    angle = torch.rand(1) * 2 * np.pi
+    
+    # Rodrigues' rotation formula
+    K = torch.tensor([
+        [0, -axis[2], axis[1]],
+        [axis[2], 0, -axis[0]],
+        [-axis[1], axis[0], 0]
+    ])
+    
+    R = torch.eye(3) + torch.sin(angle) * K + (1 - torch.cos(angle)) * torch.matmul(K, K)
+    return R
+
+
+def apply_data_augmentation(data, rotation_prob=0.5):
+    """
+    Apply random rotation to graph data.
+    
+    For graph-based models, rotation is the key augmentation since it preserves
+    geometric relationships in edge attributes while improving rotation robustness.
+    
+    Args:
+        data: PyTorch Geometric Data object
+        rotation_prob: Probability of applying rotation
+    
+    Returns:
+        Augmented Data object
+    """
+    augmented_data = data.clone()
+    
+    # Apply random rotation with given probability
+    if torch.rand(1) < rotation_prob:
+        R = random_rotation_matrix()
+        # Rotate node positions (used as initial embeddings)
+        augmented_data.x = torch.matmul(augmented_data.x, R.T)
+        # Rotate edge attributes (geometric relationships between nodes)
+        if augmented_data.edge_attr is not None:
+            augmented_data.edge_attr = torch.matmul(augmented_data.edge_attr, R.T)
+        # Rotate target (center of mass)
+        augmented_data.y = torch.matmul(augmented_data.y, R.T)
+    
+    return augmented_data
+
+
 class PointCloudData(pl.LightningDataModule):
     def __init__(
-        self, data_dir="data/processed_sh", batch_size=16, val_split=0.2, num_workers=0
+        self, 
+        data_dir="data/processed_sh", 
+        batch_size=16, 
+        val_split=0.2, 
+        num_workers=0,
+        # Data augmentation parameters
+        use_augmentation=False,
+        rotation_prob=0.5
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -47,6 +106,8 @@ class PointCloudData(pl.LightningDataModule):
 
     def setup(self, stage=None):
         print(f"Loading dataset from {self.hparams.data_dir}...")
+        if self.hparams.use_augmentation:
+            print(f"Data augmentation enabled: rotation_prob={self.hparams.rotation_prob}")
 
         # Load all .pt files
         file_list = list(Path(self.hparams.data_dir).glob("**/*.pt"))
@@ -83,16 +144,48 @@ class PointCloudData(pl.LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(
-            self.train_data,
-            batch_size=self.hparams.batch_size,
-            shuffle=True,
-            num_workers=self.hparams.num_workers,
-            pin_memory=torch.cuda.is_available(),
-            drop_last=False,
-        )
+        if self.hparams.use_augmentation:
+            # Apply augmentation only to training data
+            class AugmentedDataset(torch.utils.data.Dataset):
+                def __init__(self, dataset, rotation_prob):
+                    self.dataset = dataset
+                    self.rotation_prob = rotation_prob
+                
+                def __len__(self):
+                    return len(self.dataset)
+                
+                def __getitem__(self, idx):
+                    data = self.dataset[idx]
+                    return apply_data_augmentation(
+                        data, 
+                        rotation_prob=self.rotation_prob
+                    )
+            
+            augmented_dataset = AugmentedDataset(
+                self.train_data, 
+                self.hparams.rotation_prob
+            )
+            
+            return DataLoader(
+                augmented_dataset,
+                batch_size=self.hparams.batch_size,
+                shuffle=True,
+                num_workers=self.hparams.num_workers,
+                pin_memory=torch.cuda.is_available(),
+                drop_last=False,
+            )
+        else:
+            return DataLoader(
+                self.train_data,
+                batch_size=self.hparams.batch_size,
+                shuffle=True,
+                num_workers=self.hparams.num_workers,
+                pin_memory=torch.cuda.is_available(),
+                drop_last=False,
+            )
 
     def val_dataloader(self):
+        # Never apply augmentation to validation data
         return DataLoader(
             self.val_data,
             batch_size=self.hparams.batch_size,

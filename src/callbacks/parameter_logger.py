@@ -30,8 +30,11 @@ class ParameterCountLogger(pl.Callback):
                 module_params = sum(p.numel() for p in module.parameters())
                 param_breakdown[f"params/{name}"] = module_params
 
-        # Log to WandB via the logger
-        if hasattr(trainer.logger, "experiment"):
+        # Log to WandB via the logger (only if proper logger exists)
+        if (hasattr(trainer.logger, "experiment") and 
+            trainer.logger.experiment is not None and 
+            hasattr(trainer.logger.experiment, "config") and
+            not callable(trainer.logger.experiment.config)):
             # Log to WandB config (metadata)
             trainer.logger.experiment.config.update(
                 {
