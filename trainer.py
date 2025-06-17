@@ -41,37 +41,39 @@ def random_rotation_matrix():
     # Random axis (normalized)
     axis = torch.randn(3)
     axis = axis / torch.norm(axis)
-    
+
     # Random angle between 0 and 2π
     angle = torch.rand(1) * 2 * np.pi
-    
+
     # Rodrigues' rotation formula
-    K = torch.tensor([
-        [0, -axis[2], axis[1]],
-        [axis[2], 0, -axis[0]],
-        [-axis[1], axis[0], 0]
-    ])
-    
-    R = torch.eye(3) + torch.sin(angle) * K + (1 - torch.cos(angle)) * torch.matmul(K, K)
+    K = torch.tensor(
+        [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
+    )
+
+    R = (
+        torch.eye(3)
+        + torch.sin(angle) * K
+        + (1 - torch.cos(angle)) * torch.matmul(K, K)
+    )
     return R
 
 
 def apply_data_augmentation(data, rotation_prob=0.5):
     """
     Apply random rotation to graph data.
-    
+
     For graph-based models, rotation is the key augmentation since it preserves
     geometric relationships in edge attributes while improving rotation robustness.
-    
+
     Args:
         data: PyTorch Geometric Data object
         rotation_prob: Probability of applying rotation
-    
+
     Returns:
         Augmented Data object
     """
     augmented_data = data.clone()
-    
+
     # Apply random rotation with given probability
     if torch.rand(1) < rotation_prob:
         R = random_rotation_matrix()
@@ -82,20 +84,20 @@ def apply_data_augmentation(data, rotation_prob=0.5):
             augmented_data.edge_attr = torch.matmul(augmented_data.edge_attr, R.T)
         # Rotate target (center of mass)
         augmented_data.y = torch.matmul(augmented_data.y, R.T)
-    
+
     return augmented_data
 
 
 class PointCloudData(pl.LightningDataModule):
     def __init__(
-        self, 
-        data_dir="data/processed_sh", 
-        batch_size=16, 
-        val_split=0.2, 
+        self,
+        data_dir="data/processed_sh",
+        batch_size=16,
+        val_split=0.2,
         num_workers=0,
         # Data augmentation parameters
         use_augmentation=False,
-        rotation_prob=0.5
+        rotation_prob=0.5,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -107,7 +109,9 @@ class PointCloudData(pl.LightningDataModule):
     def setup(self, stage=None):
         print(f"Loading dataset from {self.hparams.data_dir}...")
         if self.hparams.use_augmentation:
-            print(f"Data augmentation enabled: rotation_prob={self.hparams.rotation_prob}")
+            print(
+                f"Data augmentation enabled: rotation_prob={self.hparams.rotation_prob}"
+            )
 
         # Load all .pt files
         file_list = list(Path(self.hparams.data_dir).glob("**/*.pt"))
@@ -140,8 +144,10 @@ class PointCloudData(pl.LightningDataModule):
         self.train_data, self.val_data = torch.utils.data.random_split(
             self.data_cache,
             [train_size, len(self.data_cache) - train_size],
-            generator=torch.Generator().manual_seed(42),
+            generator=torch.Generator().manual_seed(43),
         )
+        print(f"Train set size: {len(self.train_data)}")
+        print(f"Validation set size: {len(self.val_data)}")
 
     def train_dataloader(self):
         if self.hparams.use_augmentation:
@@ -150,22 +156,20 @@ class PointCloudData(pl.LightningDataModule):
                 def __init__(self, dataset, rotation_prob):
                     self.dataset = dataset
                     self.rotation_prob = rotation_prob
-                
+
                 def __len__(self):
                     return len(self.dataset)
-                
+
                 def __getitem__(self, idx):
                     data = self.dataset[idx]
                     return apply_data_augmentation(
-                        data, 
-                        rotation_prob=self.rotation_prob
+                        data, rotation_prob=self.rotation_prob
                     )
-            
+
             augmented_dataset = AugmentedDataset(
-                self.train_data, 
-                self.hparams.rotation_prob
+                self.train_data, self.hparams.rotation_prob
             )
-            
+
             return DataLoader(
                 augmented_dataset,
                 batch_size=self.hparams.batch_size,

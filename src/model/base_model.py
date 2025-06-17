@@ -35,11 +35,12 @@ class BaseModel(pl.LightningModule):
             sync_dist: Whether to sync across distributed training
         """
         # Compute distance per sample, then mean (prevents error cancellation)
-        per_sample_distances = torch.norm(pred - target, dim=1)  # [B]
+        displacement = pred - target  # [B, 3]
+
+        per_sample_distances = torch.norm(displacement, dim=1)  # [B]
         mean_displacement_distance = per_sample_distances.mean()  # scalar
 
         # Also compute individual displacement components for analysis
-        displacement = pred - target  # [B, 3]
         mean_displacement_vector = displacement.mean(dim=0)  # [3]
 
         # Log metrics
@@ -74,6 +75,8 @@ class BaseModel(pl.LightningModule):
         return self._calculate_and_log_displacement(pred, batch.y, "val")
 
     def configure_optimizers(self):
+        print("lr:", self.hparams.lr)
+        print("weight_decay:", self.hparams.weight_decay)
         optimizer = torch.optim.Adam(
             self.parameters(),
             lr=self.hparams.lr,
