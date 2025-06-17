@@ -454,40 +454,32 @@ class EquivariantGNN(BaseModel):
         if batch is not None:
             # For batched processing, compute displacement per graph
             unique_batches = torch.unique(batch)
-            com_predictions = []
+            centroid_predictions = []
             for i, b in enumerate(unique_batches):
                 mask = batch == b
                 batch_logits = raw_logits[mask]
                 batch_positions = node_pos[mask]
 
-                # Compute geometric mean of this graph
-                geometric_mean = batch_positions.mean(dim=0)  # [3]
-
                 # Apply softmax ONLY within each graph to get attention weights
                 batch_weights = torch.softmax(batch_logits, dim=0)  # [N_batch]
 
                 # Predict displacement from geometric mean
-                displacement = (
-                    torch.sum(batch_weights.unsqueeze(-1) * batch_positions, dim=0)
-                    - geometric_mean
+                displacement = torch.sum(
+                    batch_weights.unsqueeze(-1) * batch_positions, dim=0
                 )  # [3]
 
                 # Final COM = geometric_mean + displacement
-                batch_com = geometric_mean + displacement
-                com_predictions.append(batch_com)
-            com_prediction = torch.stack(com_predictions, dim=0)  # [B, 3]
+                batch_com = displacement
+                centroid_predictions.append(batch_com)
+            centroid_prediction = torch.stack(centroid_predictions, dim=0)  # [B, 3]
         else:
             # Single graph case
-            geometric_mean = node_pos.mean(dim=0)  # [3]
             weights = torch.softmax(raw_logits, dim=0)
 
             # Predict displacement from geometric mean
-            displacement = (
-                torch.sum(weights.unsqueeze(-1) * node_pos, dim=0) - geometric_mean
-            )  # [3]
+            displacement = torch.sum(weights.unsqueeze(-1) * node_pos, dim=0)  # [3]
 
-            # Final COM = geometric_mean + displacement
-            com_prediction = (geometric_mean + displacement).unsqueeze(0)  # [1, 3]
+            centroid_prediction = displacement.unsqueeze(0)  # [1, 3]
 
         if self.debug:
             final_time = time.time() - final_start
@@ -497,7 +489,7 @@ class EquivariantGNN(BaseModel):
             )
             print(f"[DEBUG] Total: {total_time:.3f}s")
 
-        return com_prediction
+        return centroid_prediction
 
     def _split_sh_features_tensor(self, edge_attr):
         """Split SH features efficiently keeping as tensors"""

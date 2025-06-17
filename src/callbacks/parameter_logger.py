@@ -33,22 +33,26 @@ class ParameterCountLogger(pl.Callback):
         # Log to WandB via the logger
         if hasattr(trainer.logger, "experiment"):
             # Log to WandB config (metadata)
-            trainer.logger.experiment.config.update(
-                {
-                    "model/total_parameters": total_params,
-                    "model/trainable_parameters": trainable_params,
-                    "model/non_trainable_parameters": total_params - trainable_params,
-                    **param_breakdown,
-                }
-            )
+            try:
+                trainer.logger.experiment.config.update(
+                    {
+                        "model/total_parameters": total_params,
+                        "model/trainable_parameters": trainable_params,
+                        "model/non_trainable_parameters": total_params
+                        - trainable_params,
+                        **param_breakdown,
+                    }
+                )
 
-            # Also log as summary metrics for easy access
-            trainer.logger.experiment.summary.update(
-                {
-                    "total_parameters": total_params,
-                    "trainable_parameters": trainable_params,
-                }
-            )
+                # Also log as summary metrics for easy access
+                trainer.logger.experiment.summary.update(
+                    {
+                        "total_parameters": total_params,
+                        "trainable_parameters": trainable_params,
+                    }
+                )
+            except Exception as e:
+                print(f"Error logging parameters to WandB: {e}")
 
         print(f"📊 Model Parameters:")
         print(f"  Total: {total_params:,}")
