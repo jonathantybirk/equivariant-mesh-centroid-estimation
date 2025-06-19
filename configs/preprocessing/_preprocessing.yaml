@@ -7,10 +7,14 @@ debug: false  # Enable detailed debug logging during preprocessing
 
 # Performance optimization settings
 use_optimized_preprocessing: true  # Use optimized multiprocessing pipeline
+skip_pointcloud: false
 optimization:
   max_processes: 4  # Maximum number of processes for parallel processing
   batch_size: 10   # Batch size for processing meshes
   memory_limit_gb: 4  # Memory limit for preprocessing
 
+
 preprocessing:
   skip_graph: false
+  skip_pointcloud: false
+

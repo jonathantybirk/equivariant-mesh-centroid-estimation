@@ -28,7 +28,11 @@ class BasicGNN(BaseModel):
 
         # Initial node embedding
         self.node_encoder = nn.Linear(3, hidden_dim)
+        print("dropout", dropout)
+        print("weight_decay", weight_decay)
         self.node_dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        if dropout > 0:
+            print("dropout is not 0")
 
         # GNN layers
         self.gnn_layers = nn.ModuleList()

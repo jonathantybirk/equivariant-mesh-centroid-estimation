@@ -9,7 +9,7 @@ sys.path.insert(0, str(project_root))
 import hydra
 import argparse
 from omegaconf import DictConfig, OmegaConf
-from src.preprocessing.mesh_to_pointcloud import process_all_meshes
+from src.preprocessing.mesh_to_pointcloud import process_all_meshes_optimized
 from src.preprocessing.pointcloud_to_graph import process_point_cloud_files
 import numpy as np
 import glob
@@ -134,6 +134,41 @@ def compute_preprocessing_statistics(cfg: DictConfig):
     Compute and display comprehensive statistics about the preprocessed data
     """
     debug = cfg.get("debug", False)
+
+    print("Camera positions statistics:")
+    print("=" * 50)
+    file_list_dv = list(
+        Path(cfg.preprocessing.lidar.output_dir).glob("**/camera_positions.npy")
+    )
+
+    camera_positions = []
+    for file in file_list_dv:
+        _camera_positions = np.load(file)[1:3]
+        camera_positions.extend(_camera_positions)
+    camera_positions = np.array(camera_positions)
+
+    from scipy import stats
+
+    # Perform t-tests for each coordinate
+    print("T-tests for camera positions coordinates:")
+    print("=" * 50)
+
+    for i, coord_name in enumerate(["x", "y", "z"]):
+        # Extract the coordinate values
+        coord_values = camera_positions[:, i]
+
+        # Perform one-sample t-test against null hypothesis (mean = 0)
+        t_stat, p_value = stats.ttest_1samp(coord_values, 0)
+
+        print(f"\n{coord_name.upper()}-coordinate:")
+        print(f"  Mean: {np.mean(coord_values):.4f}")
+        print(f"  Std:  {np.std(coord_values):.4f}")
+        print(f"  T-statistic: {t_stat:.4f}")
+        print(f"  P-value: {p_value:.6f}")
+        print(f"  Significant at α=0.05: {'Yes' if p_value < 0.05 else 'No'}")
+
+    print("\n" + "=" * 50)
+    print("Note: P-value < 0.05 indicates the mean is significantly different from 0")
 
     if debug:
         print("\n" + "=" * 60)
@@ -415,17 +450,17 @@ def compute_preprocessing_statistics(cfg: DictConfig):
 @hydra.main(config_path="../configs", config_name="preprocess_only", version_base=None)
 def main(cfg: DictConfig):
     """Main preprocessing pipeline"""
-    
+
     # Get skip flags from config
     skip_pointcloud = cfg.get("skip_pointcloud", False)
     skip_graph = cfg.get("skip_graph", False)
     no_save = cfg.get("no_save", False)
-    
+
     # Override save settings if no_save is enabled
     if no_save:
         cfg.preprocessing.lidar.save = False
         print("No-save mode enabled - data will not be saved to disk")
-    
+
     debug = cfg.get("debug", False)
 
     if debug:
@@ -437,9 +472,13 @@ def main(cfg: DictConfig):
         print(f"   Number of cameras: {cfg.preprocessing.lidar.num_cameras}")
         print(f"   Number of samples: {cfg.preprocessing.lidar.get('num_samples', 1)}")
         print(f"   k-NN neighbors: {cfg.preprocessing.graph.k_nn}")
-        print(f"   Spherical harmonics: {cfg.preprocessing.graph.get('use_spherical_harmonics', False)}")
+        print(
+            f"   Spherical harmonics: {cfg.preprocessing.graph.get('use_spherical_harmonics', False)}"
+        )
         if cfg.preprocessing.lidar.get("visualize_first_n", 0) > 0:
-            print(f"   Visualizing first: {cfg.preprocessing.lidar.visualize_first_n} pointclouds")
+            print(
+                f"   Visualizing first: {cfg.preprocessing.lidar.visualize_first_n} pointclouds"
+            )
         print(f"   Save enabled: {cfg.preprocessing.lidar.save}")
         print("")
         if skip_pointcloud:
@@ -457,13 +496,16 @@ def main(cfg: DictConfig):
 
     if use_optimized:
         print("Using optimized preprocessing pipeline...")
-        from src.preprocessing.optimized_preprocessing import run_optimized_preprocessing
+        from src.preprocessing.optimized_preprocessing import (
+            run_optimized_preprocessing,
+        )
+
         run_optimized_preprocessing(cfg)
     else:
         print("Using original preprocessing pipeline...")
         # Step 1: Generate and save point clouds (if not skipped)
         if not skip_pointcloud:
-            process_all_meshes(cfg)
+            process_all_meshes_optimized(cfg)
         else:
             print("Skipping point cloud generation step...")
 

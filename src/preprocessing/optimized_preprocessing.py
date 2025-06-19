@@ -26,63 +26,42 @@ from src.preprocessing.pointcloud_to_graph import (
 )
 
 
-def process_mesh_batch(args):
+def random_rotation_matrix_np():
+    """Generate a random 3D rotation matrix using Rodrigues' rotation formula."""
+    # Random axis (normalized)
+    axis = np.random.randn(3)
+    axis = axis / np.linalg.norm(axis)
+
+    # Random angle between 0 and 2π
+    angle = np.random.rand() * 2 * np.pi
+
+    # Rodrigues' rotation formula
+    K = np.array(
+        [[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]]
+    )
+
+    R = np.eye(3) + np.sin(angle) * K + (1 - np.cos(angle)) * np.dot(K, K)
+    return R
+
+
+def apply_random_rotation_to_mesh(mesh_obj):
     """
-    Process a batch of meshes in parallel
-    Returns processed data instead of writing to disk immediately
+    Apply a random 3D rotation to the mesh vertices.
+    This removes orientation bias from the dataset.
+
+    Args:
+        mesh_obj: Trimesh object
+
+    Returns:
+        mesh_obj: The same mesh object with rotated vertices (modified in-place)
     """
-    mesh_paths, cfg, batch_idx = args
-    batch_results = []
+    # Generate random rotation matrix
+    R = random_rotation_matrix_np()
 
-    for mesh_path in mesh_paths:
-        obj_name = os.path.splitext(os.path.basename(mesh_path))[0]
+    # Apply rotation to mesh vertices
+    mesh_obj.vertices = np.dot(mesh_obj.vertices, R.T)
 
-        try:
-            # Load mesh
-            m = mesh.load_mesh(mesh_path, debug=False)
-            com = mesh.compute_center_of_mass(m)
-
-            # Determine camera distance
-            radius = (
-                m.bounding_sphere.primitive.radius
-                * cfg.preprocessing.lidar.max_lidar_distance_factor
-            )
-
-            num_samples = cfg.preprocessing.lidar.get("num_samples", 1)
-
-            # Process all samples for this object
-            object_samples = []
-            for sample_idx in range(num_samples):
-                sample_seed = cfg.preprocessing.lidar.seed + sample_idx
-                np.random.seed(sample_seed)
-
-                # Vectorize camera processing where possible
-                camera_data = process_cameras_vectorized(m, radius, cfg)
-
-                if camera_data["success"]:
-                    object_samples.append(
-                        {
-                            "sample_idx": sample_idx,
-                            "combined_points": camera_data["combined_points"],
-                            "camera_positions": camera_data["camera_positions"],
-                        }
-                    )
-
-            if object_samples:
-                batch_results.append(
-                    {
-                        "obj_name": obj_name,
-                        "center_of_mass": com,
-                        "radius": radius,
-                        "samples": object_samples,
-                    }
-                )
-
-        except Exception as e:
-            print(f"Error processing {obj_name}: {e}")
-            continue
-
-    return batch_results, batch_idx
+    return mesh_obj
 
 
 def process_cameras_vectorized(m, radius, cfg):
@@ -314,7 +293,7 @@ def process_single_pointcloud_to_graph(args):
         clean_filename = filename.replace("pointcloud_combined_", "").replace(
             "pointcloud_combined", ""
         )
-        
+
         # Only save if saving is enabled
         if save_enabled:
             output_path = os.path.join(output_dir, clean_filename)
@@ -334,10 +313,11 @@ def optimized_preprocessing_pipeline(cfg):
     print("=== OPTIMIZED PREPROCESSING PIPELINE ===")
 
     # Step 1: Optimized mesh to point cloud conversion (with visualization support)
-    if not cfg.get("skip_pointcloud", False):
+    if not cfg.get("skip_pointcloud", False) and False:
         print("\nStep 1: Converting meshes to point clouds...")
         # Use the mesh_to_pointcloud_optimized module which has better visualization support
         from src.preprocessing.mesh_to_pointcloud import process_all_meshes_optimized
+
         process_all_meshes_optimized(cfg)
     else:
         print("\nStep 1: Skipping point cloud generation...")
@@ -350,55 +330,6 @@ def optimized_preprocessing_pipeline(cfg):
         print("\nStep 2: Skipping graph generation...")
 
     print("\n=== PREPROCESSING COMPLETE ===")
-
-
-def process_meshes_optimized(cfg):
-    """
-    Optimized mesh processing with parallel batching
-    """
-    original_cwd = get_original_cwd()
-    mesh_dir = os.path.join(original_cwd, cfg.preprocessing.lidar.mesh_dir)
-    obj_files = [f for f in os.listdir(mesh_dir) if f.endswith(".obj")]
-
-    if not obj_files:
-        raise FileNotFoundError(f"No .obj files found in {mesh_dir}")
-
-    # Determine batch size and number of processes
-    n_processes = max(min(cpu_count() - 1, 8), 1)  # Cap at 8 processes for memory
-    batch_size = max(1, len(obj_files) // (n_processes * 4))  # 4 batches per process
-
-    print(
-        f"Processing {len(obj_files)} meshes using {n_processes} processes, batch size {batch_size}"
-    )
-
-    # Create batches
-    mesh_paths = [os.path.join(mesh_dir, f) for f in obj_files]
-    batches = [
-        mesh_paths[i : i + batch_size] for i in range(0, len(mesh_paths), batch_size)
-    ]
-    args_list = [(batch, cfg, i) for i, batch in enumerate(batches)]
-
-    # Process batches in parallel
-    all_results = []
-    with Pool(processes=n_processes) as pool:
-        batch_results = list(
-            tqdm(
-                pool.imap(process_mesh_batch, args_list),
-                total=len(args_list),
-                desc="Processing mesh batches",
-            )
-        )
-
-    # Extract results and save
-    for results, batch_idx in batch_results:
-        if results:
-            all_results.extend(results)
-
-    if cfg.preprocessing.lidar.save:
-        print("Saving point cloud data...")
-        batch_save_pointclouds([all_results], cfg)
-
-    print(f"Processed {len(all_results)} objects successfully")
 
 
 # Main entry point

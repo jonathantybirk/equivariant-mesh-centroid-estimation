@@ -9,7 +9,7 @@ data:
 
 # Trainer configuration - Common for all models
 trainer:
-  max_epochs: 100
+  max_epochs: 1000
   accelerator: auto
   devices: auto
   precision: 32
@@ -29,12 +29,12 @@ trainer:
         filename: "best-{epoch}-{val_displacement_distance:.4f}"
         
     # Optional: Early stopping (commented out by default)
-    - class_path: lightning.pytorch.callbacks.EarlyStopping
-      init_args:
-        monitor: "val_displacement_distance"
-        mode: "min"
-        patience: 20
-        min_delta: 1e-6
+    # - class_path: lightning.pytorch.callbacks.EarlyStopping
+    #   init_args:
+    #     monitor: "val_displacement_distance"
+    #     mode: "min"
+    #     patience: 20
+    #     min_delta: 1e-6
         
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
