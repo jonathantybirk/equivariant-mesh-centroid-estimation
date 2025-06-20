@@ -1,0 +1,3 @@
+model:
+  class_path: Baseline
+  init_args: {} 

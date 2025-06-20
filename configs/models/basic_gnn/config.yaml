@@ -1,0 +1,10 @@
+model:
+  class_path: BasicGNN
+  init_args:
+    lr: 1e-3
+    weight_decay: 1e-4
+    hidden_dim: 24  # ~7K parameters to match EquivariantGNN
+    message_passing_steps: 3
+    final_mlp_dims: [32, 16]
+    dropout: 0.1
+    seed: 42 

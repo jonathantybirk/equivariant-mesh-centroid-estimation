@@ -40,6 +40,11 @@ class BaseModel(pl.LightningModule):
         per_sample_distances = torch.norm(displacement, dim=1)  # [B]
         mean_displacement_distance = per_sample_distances.mean()  # scalar
 
+        # FIXED: Add loss scaling to help with magnitude issues
+        # Scale loss to make gradients more meaningful
+        loss_scale_factor = 10.0  # FIXED: Much more conservative scaling (was 1000x)
+        scaled_loss = mean_displacement_distance * loss_scale_factor
+
         # Also compute individual displacement components for analysis
         mean_displacement_vector = displacement.mean(dim=0)  # [3]
 
@@ -64,7 +69,8 @@ class BaseModel(pl.LightningModule):
                 batch_size=batch_size,
             )
 
-        return mean_displacement_distance
+        # FIXED: Return scaled loss for better gradients
+        return scaled_loss
 
     def training_step(self, batch, batch_idx):
         pred = self(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
@@ -82,14 +88,46 @@ class BaseModel(pl.LightningModule):
             lr=self.hparams.lr,
             weight_decay=self.hparams.weight_decay,
         )
+
+        # FIXED: Much more conservative learning rate schedule for complex models
+        # Cap max_lr at 0.02 regardless of base lr, and make schedule gentler
+        base_lr = self.hparams.lr
+        max_lr = min(
+            0.02, base_lr * 2.0
+        )  # Cap at 0.02, or 2x base (whichever is lower)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=10, min_lr=1e-6
+            optimizer,
+            mode="min",
+            factor=0.5,
+            patience=10,
+            min_lr=1e-6,
         )
         return {
             "optimizer": optimizer,
             "lr_scheduler": {
                 "scheduler": scheduler,
-                "monitor": "val_displacement_distance",
+                "monitor": "val_displacement_distance_epoch",
+                "interval": "epoch",
                 "frequency": 1,
             },
         }
+
+        # scheduler = torch.optim.lr_scheduler.OneCycleLR(
+        #     optimizer,
+        #     max_lr=max_lr,  # Conservative peak - max 0.02
+        #     epochs=100,
+        #     steps_per_epoch=200,
+        #     pct_start=0.3,  # Longer warmup (30% vs 10%)
+        #     anneal_strategy="cos",
+        #     div_factor=5.0,  # Start at max_lr/5 (gentler start)
+        #     final_div_factor=20.0,  # End at max_lr/20 (gentler end)
+        # )
+
+        # return {
+        #     "optimizer": optimizer,
+        #     "lr_scheduler": {
+        #         "scheduler": scheduler,
+        #         "interval": "step",  # Update every step, not epoch
+        #         "frequency": 1,
+        #     },
+        # }

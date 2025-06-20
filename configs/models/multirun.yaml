@@ -1,0 +1,80 @@
+# Multirun configuration for training multiple models
+# Usage: python trainer.py fit --config configs/models/multirun.yaml -m
+
+defaults:
+  - /config_base
+  - _self_
+
+# Hydra multirun configuration
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    _target_: hydra._internal.BasicSweeper
+    max_batch_size: 1  # Run one at a time to avoid memory issues
+
+# Define the parameter sweep for different model types
+model_config: baseline,basic_gnn,eq_gnn,large_gnn
+
+# Model configurations based on model_config parameter
+model:
+  baseline:
+    class_path: Baseline
+    init_args: {}
+  basic_gnn:
+    class_path: LargeGNN
+    init_args:
+      lr: 1e-3
+      weight_decay: 1e-4
+      hidden_dim: 24
+      message_passing_steps: 3
+      final_mlp_dims: [32, 16]
+      dropout: 0.1
+      seed: 42
+  eq_gnn:
+    class_path: EquivariantGNN
+    init_args:
+      lr: 0.01
+      weight_decay: 1e-4
+      multiplicity: 3
+      message_passing_steps: 2
+      max_sh_degree: 2
+      base_l_values: [0, 1, 2]
+      num_cg_layers: 1
+      final_mlp_dims: [64, 32]
+      dropout: 0.1
+      debug: false
+      init_method: "xavier"
+  large_gnn:
+    class_path: LargeGNN
+    init_args:
+      lr: 1e-3
+      weight_decay: 1e-4
+      hidden_dim: 64
+      message_passing_steps: 4
+      message_mlp_dims: [128, 64]
+      update_mlp_dims: [64]
+      final_mlp_dims: [64, 32]
+      dropout: 0.15
+      seed: 42
+
+# WandB configuration with dynamic naming
+trainer:
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: "gnn-center-of-mass"
+      name: "${model_config}-multirun-experiment"  # Dynamic name based on model config
+      save_dir: "wandb_logs"
+      log_model: "all"
+      tags: ["${model_config}", "multirun", "center-of-mass"]
+  
+  # Add checkpoint callback with dynamic naming
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: "checkpoints"
+        filename: "${model_config}-{epoch:02d}-{val_displacement_distance_epoch:.4f}"
+        monitor: "val_displacement_distance_epoch"
+        mode: "min"
+        save_top_k: 1
+        verbose: true 

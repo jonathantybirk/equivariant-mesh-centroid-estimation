@@ -1,0 +1,14 @@
+model:
+  class_path: EquivariantGNN
+  init_args:
+    lr: 0.01  # FIXED: More conservative base LR (will peak at 0.02 with new scheduler)
+    weight_decay: 1e-4  # FIXED: Add more regularization to prevent overfitting
+    multiplicity: 3  # Good balance
+    message_passing_steps: 2  # FIXED: Reduce to avoid vanishing gradients in deeper layers
+    max_sh_degree: 2
+    base_l_values: [0, 1, 2]
+    num_cg_layers: 1
+    final_mlp_dims: [64, 32]  # FIXED: Smaller to avoid overparameterization 
+    dropout: 0.1  # FIXED: Increase dropout for better regularization
+    debug: false
+    init_method: "xavier" 

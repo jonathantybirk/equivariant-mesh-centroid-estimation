@@ -1,0 +1,12 @@
+model:
+  class_path: LargeGNN
+  init_args:
+    lr: 1e-3  # Conservative learning rate
+    weight_decay: 1e-4  # Standard regularization
+    hidden_dim: 64  # Large hidden dimension for ~295K parameters
+    message_passing_steps: 4  # More layers for better learning
+    message_mlp_dims: [128, 64]  # Larger MLPs
+    update_mlp_dims: [64]
+    final_mlp_dims: [64, 32]
+    dropout: 0.15  # More dropout for regularization
+    seed: 42 

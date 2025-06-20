@@ -1,0 +1,24 @@
+# WandB configuration for Baseline model
+# Usage: python trainer.py fit --config config_base.yaml --config configs/models/baseline/config.yaml --config configs/models/baseline/wandb.yaml
+
+trainer:
+  # Enable Weights & Biases logger
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: "gnn-center-of-mass"
+      name: "baseline-zero"  # Specific name for Baseline
+      save_dir: "wandb_logs"
+      log_model: "all"
+      tags: ["baseline", "zero-prediction"]
+  
+  # Add checkpoint callback with custom naming
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: "checkpoints"
+        filename: "baseline-{epoch:02d}-{val_displacement_distance_epoch:.4f}"
+        monitor: "val_displacement_distance_epoch"
+        mode: "min"
+        save_top_k: 1
+        verbose: true 

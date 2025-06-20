@@ -66,14 +66,15 @@ Find all the options in config.yaml
 For non-equivariant models, you can enable data augmentation to improve performance:
 
 ```bash
-# Train BasicGNN with rotation augmentation (recommended for graph models)
+# Train LargeGNN with rotation augmentation (recommended for graph models)
 python trainer.py fit --config config_base.yaml --config config_basic_gnn_augmented.yaml
 
 # Or specify augmentation parameters directly
-python trainer.py fit --model.class_path=BasicGNN --data.use_augmentation=true --data.rotation_prob=0.7
+python trainer.py fit --model.class_path=LargeGNN --data.use_augmentation=true --data.rotation_prob=0.7
 ```
 
 Data augmentation parameters:
+
 - `use_augmentation`: Enable/disable data augmentation (default: false)
 - `rotation_prob`: Probability of applying random rotation (default: 0.5)
 

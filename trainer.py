@@ -5,7 +5,7 @@ Clean Lightning CLI Setup - Models inherit directly from BaseModel
 
 Usage:
     python trainer.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN --data.class_path=PointCloudData
-    python trainer.py fit --model.class_path=src.model.gnn.BasicGNN --data.class_path=PointCloudData
+    python trainer.py fit --model.class_path=src.model.gnn.LargeGNN --data.class_path=PointCloudData
 
 With Weights & Biases:
     python trainer.py fit --model.class_path=src.model.eq_gnn.EquivariantGNN --data.class_path=PointCloudData \
@@ -25,14 +25,14 @@ from pathlib import Path
 import sys
 from tqdm import tqdm
 import numpy as np
-from src.model.eq_gnn import EquivariantGNN
 from torch import nn
 
 
-# from src.model.eq_gnn_fast import EquivariantGNNFast
-from src.model.gnn import BasicGNN
-from src.model.baseline_zero import BaselineZero
-from src.model.eq_e3nn import EquivariantE3NN
+# Import available models
+from src.model.baseline import Baseline
+from src.model.basic_gnn import BasicGNN
+from src.model.eq_gnn import EquivariantGNN
+from src.model.large_gnn import LargeGNN
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -192,7 +192,11 @@ class PointCloudData(pl.LightningDataModule):
 
         # Load all .pt files
         file_list = list(Path(self.hparams.data_dir).glob("**/*.pt"))
-        # file_list = file_list[:200]
+        # Pick 1000 random files pseudorandomly
+        if len(file_list) > 1000:
+            torch.manual_seed(42)  # For reproducible randomness
+            indices = torch.randperm(len(file_list))[:1000]
+            file_list = [file_list[i] for i in indices]
 
         for file_path in tqdm(file_list, desc="Loading data"):
             try:
@@ -337,8 +341,27 @@ if __name__ == "__main__":
             --trainer.fast_dev_run=true
     """
 
-    # Lightning CLI with no restrictions (auto-discovery)
-    cli = LightningCLI(
+    class CustomLightningCLI(LightningCLI):
+        def add_arguments_to_parser(self, parser):
+            # Add any custom arguments if needed
+            pass
+
+        def before_fit(self):
+            # This is called before training starts - perfect place to add our callback
+            # Ensure our custom parameter logger callback is present
+            from src.callbacks.parameter_logger import ParameterCountLogger
+
+            # Check if already present (might be configured in YAML)
+            has_param_logger = any(
+                isinstance(cb, ParameterCountLogger) for cb in self.trainer.callbacks
+            )
+
+            if not has_param_logger:
+                param_logger = ParameterCountLogger()
+                self.trainer.callbacks.append(param_logger)
+
+    # Use custom Lightning CLI
+    cli = CustomLightningCLI(
         save_config_kwargs={"overwrite": True}, datamodule_class=PointCloudData
     )
 # # %%

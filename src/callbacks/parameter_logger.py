@@ -51,8 +51,12 @@ class ParameterCountLogger(pl.Callback):
                         "trainable_parameters": trainable_params,
                     }
                 )
+                print("✅ Model parameters logged to W&B successfully!")
             except Exception as e:
-                print(f"Error logging parameters to WandB: {e}")
+                print(f"❌ Error logging parameters to W&B: {e}")
+                import traceback
+
+                traceback.print_exc()
 
         print(f"📊 Model Parameters:")
         print(f"  Total: {total_params:,}")

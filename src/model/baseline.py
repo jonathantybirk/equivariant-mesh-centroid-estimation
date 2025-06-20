@@ -2,7 +2,7 @@ import torch
 from .base_model import BaseModel
 
 
-class BaselineZero(BaseModel):
+class Baseline(BaseModel):
     """
     Baseline model that predicts the center of mass of the graph.
     This is a simple model that predicts the center of mass of the graph.
@@ -65,5 +65,5 @@ class BaselineZero(BaseModel):
         return mean_displacement_distance
 
     def configure_optimizers(self):
-        # BaselineZero has no parameters to optimize, so return None
+        # Baseline has no parameters to optimize, so return None
         return None
