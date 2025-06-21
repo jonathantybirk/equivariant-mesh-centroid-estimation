@@ -12,7 +12,7 @@ $$
 \tilde{f}_i^{(t)} \in V = \bigoplus_{l=0}^L V_l^{\oplus M}
 $$
 
-where $M$ is the channel multiplicity.
+where $M$ is the `node_multiplicity` parameter.
 
 For an edge $j \to i$ define:
 
@@ -21,81 +21,156 @@ For an edge $j \to i$ define:
 - The _spherical-harmonic edge attribute_:
 
 $$
-\tilde{a}_{ij} = \bigoplus_{l=0}^L \left(Y_m^{(l)}(r_{ij}/d_{ij})\right)_{m=-l}^l
+\tilde{a}_{ij} = \bigoplus_{l=0}^{L_{edge}} \left(Y_m^{(l)}(r_{ij}/d_{ij})\right)_{m=-l}^l
 $$
 
-which is itself a steerable vector of maximal degree $L$.
+which is itself a steerable vector of maximal degree $L_{edge}$ (`edge_sh_degree`).
 
-## Simple steerable Edge messages
+## Edge Message Computation
 
-We will just be using a single weight for each of the irreps outputs of the CG product as shown above.
+For each edge $j \to i$, we compute messages using Clebsch-Gordan products followed by two-layer gating:
 
-$$
-\tilde{m}_{ij}^{(t)} = \sigma_g\left(W_{\tilde{a}_{ij}}^{(2)} \sigma_g\left(W_{\tilde{a}_{ij}}^{(1)} \tilde{h}_{ij}\right)\right)
-$$
-
-We will here let the message be the output of the CG product. This means that the message is a long vector of irreps.
-
-For layer $t$, the CG product is between $\tilde{h}_{ij} := \tilde{f}_i^{(t)} \oplus \tilde{f}_j^{(t)} \oplus d_{ij}$ and $\tilde{a}_{ij}$. With $l$ values for $f_i$, $f_j$ as [0,1,2] and $d$ as 1, and $a$ as [0,1,2], $h$ has $l$ as [0,1,2,0,1,2,0]. All connections are valid, resulting in 33 valid connections, matching the CG product's output channels.
-
-We precompute CG coefficients for all valid connections, and create a big CG tensor. This can be reused for all layers.
-
-this results in a tensor l1_dim: 19, l2_dim: 9, l3_dim: 9
-
-We will simply take the GC product of each l with it self, to get an invariant feature. Since our features are l = [0,1,2], we will have 3 invariant features. So this also means we will have to precompute the CG weights for [0,1,2] \* [0,1,2] > [0,0,0].
-
-For the first layer, we do not have any node feature f, so we simply set them to spherical harmonics node positions.
-
-For the second layer, we will use the node features of the first layer as input.
-
-## Message aggregation
-
-Now we will use a simple MLP to help use create the f again. We take as input the node features, the aggregated messages and the orientation attribute.
+**Step 1: CG Product**
 
 $$
-\tilde{f}_i' = \psi_f \left( \tilde{f}_i, \sum_{j \in \mathcal{N}(i)} \tilde{m}_{ij}, \tilde{d}_i \right).
+\tilde{m}_{ij}^{raw} = \tilde{h}_{ij} \otimes \tilde{a}_{ij}
 $$
 
-Where $\phi_f$ is a simple MLP that takes our invariant features and the aggregated messages as input.
+**Step 2: Two-layer Gating**
 
 $$
-\psi_f = \tilde{f}_i \cdot MLP(\sum_{j \in \mathcal{N}(i)} m_i, d_i)
+\tilde{m}_{ij}^{(t)} = \sigma_g\left(W_{\tilde{a}_{ij}}^{(2)} \sigma_g\left(W_{\tilde{a}_{ij}}^{(1)} \tilde{m}_{ij}^{raw}\right)\right)
 $$
 
-## Invariant read-out and centroid regression
+where:
 
-For each node we extract invariant scalars:
+- $\tilde{h}_{ij} := \tilde{f}_i^{(t)} \oplus \tilde{f}_j^{(t)} \oplus d_{ij}$ combines source node features, target node features, and edge distance
+- $W_{\tilde{a}_{ij}}^{(1)}$ and $W_{\tilde{a}_{ij}}^{(2)}$ are learnable scalar weights for each spherical harmonic degree in $\tilde{a}_{ij}$
+- $\sigma_g = \tanh$ is the gating function
+- The CG product $\tilde{h}_{ij} \otimes \tilde{a}_{ij} \rightarrow \tilde{m}_{ij}^{raw}$ creates the raw steerable messages
 
-$$
-s_i = \left[\langle\tilde{f}_{i,l=0}^{(T)}\rangle, \|\tilde{f}_{i,l=1}^{(T)}\|_2, \ldots, \|\tilde{f}_{i,l=L}^{(T)}\|_2\right] \in \mathbb{R}^{L+1}
-$$
+**Detailed Process:**
 
-normalize, then feed a classical MLP $g_\theta$ to obtain logits $z_i = g_\theta(s_i)$.
+For layer $t$, with node l-values `node_l_values = [0,1,2]` and edge SH degree `edge_sh_degree = 2`:
 
-Softmax weights $\omega_i = \text{softmax}(z_i)$ generate the centroid estimate:
+1. **Build h**: $h$ has l-values [0,1,2,0,1,2,0] (source features + target features + distance)
+2. **Edge attributes**: $a$ has l-values [0,1,2] (edge spherical harmonics)
+3. **CG Product**: Valid CG couplings $h \otimes a \rightarrow m^{raw}$ produce raw message channels
+4. **Per-degree Gating**: For each edge attribute degree $l \in \{0,1,2\}$, apply weights $W_l^{(1)}, W_l^{(2)}$ to corresponding message components
 
-$$
-\hat{c} = \sum_i \omega_i x_i
-$$
+We precompute CG coefficients for all valid connections and store them as buffers for efficiency.
 
-where $x_i$ is the position of the node.
+## Node Feature Initialization
 
-## Equivariance guarantee
-
-Every linear map is a CG product conditioned on steerable attributes;
-every non-linearity is either:
-
-1. element-wise on $l=0$ channels or
-2. gated by $l=0$ scalars.
-
-Because each operation commutes with the $O(3)$ representation, the whole architecture satisfies:
+For the first layer, we initialize node features using spherical harmonics of node positions:
 
 $$
-\tilde{f}^{(0)} \mapsto D(g)\tilde{f}^{(0)} \Longrightarrow \hat{c} \mapsto R\hat{c}, \quad \forall g=(\mathbf{t},R) \in SE(3)
+\tilde{f}_i^{(0)} = \text{SH}(x_i) \text{ replicated over multiplicity channels}
 $$
 
-modulo the trivial translation handled by relative coordinates.
+For subsequent layers, we use the updated features from the previous layer.
 
-## Discussion
+## Invariant Feature Extraction
 
-The model combines exact $SE(3)$ symmetry with a lightweight distance-aware gating MLP, avoiding costly self-attention and high-order tensors beyond $l=2$. While theoretically sound, the quadratic channel expansion imposed by multiple CG layers still inflates memory for large $L$; empirically we observe diminishing returns beyond $l=2$, in line with known results. Nonetheless, within the chosen bandwidth the architecture retains strict equivariance and competitive runtime.
+Throughout the model, we use a **unified invariant extraction function** `extract_invariants()` that converts steerable features to rotation-invariant scalars. This same function is applied to:
+
+1. Current node features during message aggregation
+2. Aggregated messages during node updates
+3. Final node features for centroid prediction
+
+For any steerable feature tensor $\tilde{f}$ with l-types from `node_l_values`, we extract invariant scalars:
+
+$$
+\text{extract\_invariants}(\tilde{f}) = [s^{(0)}, s^{(1)}, s^{(2)}, \ldots]
+$$
+
+where each component is:
+
+$$
+s^{(l)} = \begin{cases}
+\langle \tilde{f}_{l=0} \rangle & \text{if } l = 0 \text{ (mean of scalars)} \\
+\|\tilde{f}_{l}\|_2 & \text{if } l > 0 \text{ (L2 norm of vectors/tensors)}
+\end{cases}
+$$
+
+For example, with `node_l_values = [0,1,2]`, this produces $s \in \mathbb{R}^{3}$ invariant features.
+
+**Key properties:**
+
+- **Rotation invariance**: Norms and means are preserved under rotations
+- **Efficient computation**: No need for explicit CG self-products
+- **Stable gradients**: Well-conditioned for backpropagation
+- **Universal applicability**: Same function works for node features, messages, and any steerable tensor
+
+## Message Aggregation and Node Updates
+
+We aggregate messages to each node and update node features using:
+
+$$
+\tilde{f}_i^{(t+1)} = \tilde{f}_i^{(t)} + \text{gate}_i \odot \sum_{j \in \mathcal{N}(i)} \tilde{m}_{ij}^{(t)}
+$$
+
+where the gate is computed by an MLP $\psi_f$:
+
+$$
+\text{gate}_i = \psi_f\left(s_i^{(f)}, s_i^{(m)}, \overline{r}_i\right)
+$$
+
+Here:
+
+- $s_i^{(f)} = \text{extract\_invariants}(\tilde{f}_i^{(t)})$ are invariant features from current node features
+- $s_i^{(m)} = \text{extract\_invariants}(\sum_{j \in \mathcal{N}(i)} \tilde{m}_{ij}^{(t)})$ are invariant features from aggregated messages
+- $\overline{r}_i = \frac{\sum_{j \in \mathcal{N}(i)} \|r_{ij}\|}{|\mathcal{N}(i)|}$ is the average distance to neighbors
+
+The MLP $\psi_f$ has configurable architecture specified by `message_mlp_dims` and outputs one gate value per l-type.
+
+## Centroid Regression
+
+After $T$ message passing steps, we apply the same invariant extraction function to the final node features:
+
+$$
+s_i^{(final)} = \text{extract\_invariants}(\tilde{f}_i^{(T)})
+$$
+
+We feed these invariant features to a final MLP $g_\theta$ with architecture specified by `final_mlp_dims`:
+
+$$
+z_i = g_\theta(s_i^{(final)})
+$$
+
+Softmax weights generate the centroid estimate:
+
+$$
+\omega_i = \frac{\exp(z_i)}{\sum_j \exp(z_j)}, \quad \hat{c} = \sum_i \omega_i x_i
+$$
+
+## Implementation Parameters
+
+The model architecture is controlled by:
+
+- `edge_sh_degree`: Angular resolution for edge directions (default: 2)
+- `node_l_values`: Types of geometric features nodes can learn (default: [0,1,2])
+- `node_multiplicity`: Number of channels per l-type (default: 3)
+- `message_mlp_dims`: Architecture of message aggregation MLP (default: [64,32])
+- `final_mlp_dims`: Architecture of final prediction MLP (default: [64,32])
+- `message_passing_steps`: Number of message passing layers (default: 2)
+
+## Equivariance Guarantee
+
+Every linear operation is a CG product conditioned on steerable edge attributes.
+Every non-linearity operates on:
+
+1. Invariant scalars (MLP inputs), or
+2. Element-wise on $l=0$ channels (scalar gating)
+
+Because each operation commutes with the $O(3)$ representation, the architecture satisfies:
+
+$$
+x_i \mapsto Rx_i + t \Longrightarrow \hat{c} \mapsto R\hat{c} + t, \quad \forall (R,t) \in SE(3)
+$$
+
+Translation equivariance is achieved through:
+
+- Relative coordinates $r_{ij} = x_j - x_i$
+- Centered input point clouds during preprocessing
+- Direct use of node positions $x_i$ in final centroid computation

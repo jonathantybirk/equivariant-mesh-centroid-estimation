@@ -171,7 +171,7 @@ def process_pointclouds_to_graphs_optimized(cfg):
     input_dir = os.path.join(base_dir, cfg.preprocessing.lidar.output_dir)
     k_nn = cfg.preprocessing.graph.k_nn
     use_sh = cfg.preprocessing.graph.get("use_spherical_harmonics", False)
-    max_sh_degree = cfg.preprocessing.graph.get("max_sh_degree", 1)
+    edge_sh_degree = cfg.preprocessing.graph.get("edge_sh_degree", 1)
     normalize_pointcloud = cfg.preprocessing.graph.get("normalize_pointcloud", True)
     save_enabled = cfg.preprocessing.lidar.get("save", True)
 
@@ -179,7 +179,7 @@ def process_pointclouds_to_graphs_optimized(cfg):
     base_output_dir = cfg.preprocessing.processed_dir
     if use_sh:
         output_dir = os.path.join(
-            base_dir, base_output_dir + "_sh" + str(max_sh_degree)
+            base_dir, base_output_dir + "_sh" + str(edge_sh_degree)
         )
     else:
         output_dir = os.path.join(base_dir, base_output_dir + "_dv")
@@ -225,7 +225,7 @@ def process_pointclouds_to_graphs_optimized(cfg):
                     center_of_mass,
                     k_nn,
                     use_sh,
-                    max_sh_degree,
+                    edge_sh_degree,
                     normalize_pointcloud,
                     output_dir,
                     save_enabled,
@@ -267,7 +267,7 @@ def process_single_pointcloud_to_graph(args):
         center_of_mass,
         k_nn,
         use_sh,
-        max_sh_degree,
+        edge_sh_degree,
         normalize_pointcloud,
         output_dir,
         save_enabled,
@@ -283,7 +283,7 @@ def process_single_pointcloud_to_graph(args):
             center_of_mass,
             k_nn,
             use_sh,
-            max_sh_degree,
+            edge_sh_degree,
             debug=False,
             normalize_pointcloud=normalize_pointcloud,
         )

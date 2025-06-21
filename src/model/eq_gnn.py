@@ -30,11 +30,19 @@ class EquivariantCGLayer(nn.Module):
     And: f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
     """
 
-    def __init__(self, max_sh_degree, base_l_values, multiplicity, debug=False):
+    def __init__(
+        self,
+        edge_sh_degree,
+        node_l_values,
+        node_multiplicity,
+        message_mlp_dims=[64, 32],
+        dropout=0.1,
+        debug=False,
+    ):
         super().__init__()
-        self.max_sh_degree = max_sh_degree
-        self.base_l_values = base_l_values  # [0, 1, 2]
-        self.multiplicity = multiplicity
+        self.edge_sh_degree = edge_sh_degree
+        self.node_l_values = node_l_values  # [0, 1, 2, ...]
+        self.node_multiplicity = node_multiplicity
         self.debug = debug
 
         # Precompute CG tensor and learnable weights
@@ -45,34 +53,43 @@ class EquivariantCGLayer(nn.Module):
         self.edge_weights_1 = nn.ParameterDict()
         self.edge_weights_2 = nn.ParameterDict()
 
-        for a_l in range(self.max_sh_degree + 1):
+        for a_l in range(self.edge_sh_degree + 1):
             # Weights for each edge attribute degree
             self.edge_weights_1[str(a_l)] = nn.Parameter(torch.randn(1) * 0.1)
             self.edge_weights_2[str(a_l)] = nn.Parameter(torch.randn(1) * 0.1)
 
         # ψ_f MLP for node updates: f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
         # Input: invariant features from f_i + invariant features from messages + distance
-        invariant_dim = len(base_l_values)  # One invariant per l-value
+        invariant_dim = len(self.node_l_values)  # One invariant per l-value
+        input_dim = (
+            invariant_dim * 2 + 1
+        )  # f_i invariants + message invariants + distance
 
-        self.psi_f = nn.Sequential(
-            nn.Linear(
-                invariant_dim * 2 + 1, 64
-            ),  # f_i invariants + message invariants + distance
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(64, 32),
-            nn.ReLU(),
-            nn.Linear(32, invariant_dim),  # Output gate for each l-type
-            nn.Sigmoid(),
-        )
+        # Build configurable message MLP
+        message_layers = []
+        prev_dim = input_dim
+
+        for dim in message_mlp_dims:
+            message_layers.append(nn.Linear(prev_dim, dim))
+            message_layers.append(nn.ReLU())
+            if dropout > 0:
+                message_layers.append(nn.Dropout(dropout))
+            prev_dim = dim
+
+        message_layers.append(
+            nn.Linear(prev_dim, invariant_dim)
+        )  # Output gate for each l-type
+        message_layers.append(nn.Sigmoid())
+
+        self.psi_f = nn.Sequential(*message_layers)
 
     def _precompute_cg_tensor(self):
         """
         Precompute CG tensor for h ⊗ a → output
-        where h = [f_i, f_j, d] has l-values [0,1,2,0,1,2,0]
+        where h = [f_i, f_j, d] has l-values from node_l_values + node_l_values + [0]
         """
-        # Build h_l_values: [f_i: 0,1,2] + [f_j: 0,1,2] + [d: 0]
-        h_l_values = self.base_l_values + self.base_l_values + [0]
+        # Build h_l_values: [f_i: node_l_values] + [f_j: node_l_values] + [d: 0]
+        h_l_values = self.node_l_values + self.node_l_values + [0]
 
         valid_connections = []
         cg_tensors = []
@@ -80,13 +97,13 @@ class EquivariantCGLayer(nn.Module):
         if self.debug:
             print(f"[DEBUG] Building CG tensor for h ⊗ a → output")
             print(f"[DEBUG] h_l_values: {h_l_values}")
-            print(f"[DEBUG] a_l_values: {list(range(self.max_sh_degree + 1))}")
-            print(f"[DEBUG] output_l_values: {self.base_l_values}")
+            print(f"[DEBUG] a_l_values: {list(range(self.edge_sh_degree + 1))}")
+            print(f"[DEBUG] output_l_values: {self.node_l_values}")
 
         # Find all valid CG connections
         for h_idx, h_l in enumerate(h_l_values):
-            for a_l in range(self.max_sh_degree + 1):
-                for out_idx, out_l in enumerate(self.base_l_values):
+            for a_l in range(self.edge_sh_degree + 1):
+                for out_idx, out_l in enumerate(self.node_l_values):
                     try:
                         validate_triangle_inequality(h_l, a_l, out_l)
 
@@ -144,15 +161,15 @@ class EquivariantCGLayer(nn.Module):
 
         # Dimensions for indexing
         h_irrep_dims = []
-        for l in self.base_l_values + self.base_l_values + [0]:
+        for l in self.node_l_values + self.node_l_values + [0]:
             h_irrep_dims.append(2 * l + 1)
 
         a_irrep_dims = []
-        for l in range(self.max_sh_degree + 1):
+        for l in range(self.edge_sh_degree + 1):
             a_irrep_dims.append(2 * l + 1)
 
         out_irrep_dims = []
-        for l in self.base_l_values:
+        for l in self.node_l_values:
             out_irrep_dims.append(2 * l + 1)
 
         # Process each valid connection with learnable weights
@@ -167,8 +184,8 @@ class EquivariantCGLayer(nn.Module):
 
             # Get h irrep features (convert tensor element to int)
             h_idx_int = int(h_idx.item()) if hasattr(h_idx, "item") else int(h_idx)
-            h_start = sum(h_irrep_dims[:h_idx_int]) * self.multiplicity
-            h_end = h_start + h_irrep_dims[h_idx_int] * self.multiplicity
+            h_start = sum(h_irrep_dims[:h_idx_int]) * self.node_multiplicity
+            h_end = h_start + h_irrep_dims[h_idx_int] * self.node_multiplicity
             h_features = h[:, h_start:h_end]
 
             # Get a irrep features
@@ -176,8 +193,8 @@ class EquivariantCGLayer(nn.Module):
             a_end = a_start + a_irrep_dims[a_l_int]
             a_features = a[:, a_start:a_end]
 
-            # Apply CG product for each multiplicity channel
-            for channel in range(self.multiplicity):
+            # Apply CG product for each node_multiplicity channel
+            for channel in range(self.node_multiplicity):
                 h_ch_start = channel * h_irrep_dims[h_idx_int]
                 h_ch_end = (channel + 1) * h_irrep_dims[h_idx_int]
                 h_ch = h_features[:, h_ch_start:h_ch_end]
@@ -196,7 +213,7 @@ class EquivariantCGLayer(nn.Module):
                     int(out_idx.item()) if hasattr(out_idx, "item") else int(out_idx)
                 )
                 out_start = (
-                    sum(out_irrep_dims[:out_idx_int]) * self.multiplicity
+                    sum(out_irrep_dims[:out_idx_int]) * self.node_multiplicity
                     + channel * out_irrep_dims[out_idx_int]
                 )
                 out_end = out_start + out_irrep_dims[out_idx_int]
@@ -222,17 +239,17 @@ class EquivariantCGLayer(nn.Module):
 
         # ψ_f MLP: takes invariants from f_i, messages, and distance
         psi_input = torch.cat([f_invariants, msg_invariants, avg_distances], dim=1)
-        gates = self.psi_f(psi_input)  # [num_nodes, len(base_l_values)]
+        gates = self.psi_f(psi_input)  # [num_nodes, len(node_l_values)]
 
         # Apply gates to each l-type separately
         updated_f = torch.zeros_like(f)
         start_idx = 0
 
-        for l_idx, l_value in enumerate(self.base_l_values):
+        for l_idx, l_value in enumerate(self.node_l_values):
             irrep_dim = 2 * l_value + 1
             gate = gates[:, l_idx : l_idx + 1]  # [num_nodes, 1]
 
-            for channel in range(self.multiplicity):
+            for channel in range(self.node_multiplicity):
                 end_idx = start_idx + irrep_dim
 
                 # Gated update: f_new = f_old + gate * message
@@ -252,12 +269,12 @@ class EquivariantCGLayer(nn.Module):
         invariants = []
         start_idx = 0
 
-        for l_value in self.base_l_values:
+        for l_value in self.node_l_values:
             irrep_dim = 2 * l_value + 1
 
             # Collect all channels for this l-value
             l_features = []
-            for channel in range(self.multiplicity):
+            for channel in range(self.node_multiplicity):
                 end_idx = start_idx + irrep_dim
                 l_features.append(f[:, start_idx:end_idx])
                 start_idx = end_idx
@@ -265,7 +282,7 @@ class EquivariantCGLayer(nn.Module):
             # Stack and compute invariant
             l_tensor = torch.stack(
                 l_features, dim=1
-            )  # [num_nodes, multiplicity, irrep_dim]
+            )  # [num_nodes, node_multiplicity, irrep_dim]
 
             if l_value == 0:
                 # For l=0 (scalars): take mean ⟨f_{i,l=0}⟩
@@ -280,7 +297,7 @@ class EquivariantCGLayer(nn.Module):
 
             invariants.append(invariant)
 
-        return torch.cat(invariants, dim=1)  # [num_nodes, len(base_l_values)]
+        return torch.cat(invariants, dim=1)  # [num_nodes, len(node_l_values)]
 
 
 class EquivariantGNN(BaseModel):
@@ -292,33 +309,37 @@ class EquivariantGNN(BaseModel):
         self,
         message_passing_steps=2,
         final_mlp_dims=[64, 32],
-        max_sh_degree=2,
+        message_mlp_dims=[64, 32],
+        edge_sh_degree=2,
         init_method="xavier",
         seed=42,
         debug=False,
         lr=1e-3,
         weight_decay=1e-5,
-        multiplicity=3,
+        node_multiplicity=3,
         dropout=0.1,
-        base_l_values=[0, 1, 2],
+        node_l_values=[0, 1, 2],
     ):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
 
-        self.max_sh_degree = max_sh_degree
+        self.edge_sh_degree = edge_sh_degree
         self.debug = debug
         self.message_passing_steps = message_passing_steps
-        self.multiplicity = multiplicity
+        self.node_multiplicity = node_multiplicity
         self.dropout = dropout
-        self.base_l_values = base_l_values
+        self.node_l_values = node_l_values
+        self.message_mlp_dims = message_mlp_dims
 
         # Message passing layers
         self.message_layers = nn.ModuleList(
             [
                 EquivariantCGLayer(
-                    max_sh_degree=self.max_sh_degree,
-                    base_l_values=self.base_l_values,
-                    multiplicity=self.multiplicity,
+                    edge_sh_degree=self.edge_sh_degree,
+                    node_l_values=self.node_l_values,
+                    node_multiplicity=self.node_multiplicity,
+                    message_mlp_dims=self.message_mlp_dims,
+                    dropout=self.dropout,
                     debug=self.debug,
                 )
                 for _ in range(self.message_passing_steps)
@@ -327,7 +348,7 @@ class EquivariantGNN(BaseModel):
 
         # Final MLP for centroid prediction (invariant readout)
         # Input: invariant features s_i = [⟨f_{i,l=0}⟩, ||f_{i,l=1}||_2, ..., ||f_{i,l=L}||_2]
-        invariant_dim = len(self.base_l_values)
+        invariant_dim = len(self.node_l_values)
 
         final_layers = []
         final_layers.append(nn.LayerNorm(invariant_dim))
@@ -375,7 +396,7 @@ class EquivariantGNN(BaseModel):
         f = self._initialize_node_features(x, device)
 
         # Prepare edge attributes
-        a = spherical_harmonics(list(range(self.max_sh_degree + 1)), r, normalize=True)
+        a = spherical_harmonics(list(range(self.edge_sh_degree + 1)), r, normalize=True)
         d = torch.norm(r, dim=1, keepdim=True)
 
         if self.debug:
@@ -443,22 +464,22 @@ class EquivariantGNN(BaseModel):
         "For the first layer, we do not have any node feature f,
         so we simply set them to spherical harmonics node positions"
         """
-        # Compute spherical harmonics for each l-value with multiplicity
-        sh_features = spherical_harmonics(self.base_l_values, x, normalize=True)
+        # Compute spherical harmonics for each l-value with node_multiplicity
+        sh_features = spherical_harmonics(self.node_l_values, x, normalize=True)
 
-        # Expand to multiplicity channels
+        # Expand to node_multiplicity channels
         expanded_features = []
         start_idx = 0
 
-        for l_value in self.base_l_values:
+        for l_value in self.node_l_values:
             irrep_dim = 2 * l_value + 1
             end_idx = start_idx + irrep_dim
 
             # Get the l-th irrep
             l_features = sh_features[:, start_idx:end_idx]  # [num_nodes, irrep_dim]
 
-            # Replicate for multiplicity channels
-            for channel in range(self.multiplicity):
+            # Replicate for node_multiplicity channels
+            for channel in range(self.node_multiplicity):
                 expanded_features.append(l_features)
 
             start_idx = end_idx

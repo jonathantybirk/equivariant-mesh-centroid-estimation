@@ -348,12 +348,12 @@ def compute_preprocessing_statistics(cfg: DictConfig):
 
     # Determine processed graph directory
     use_sh = cfg.preprocessing.graph.get("use_spherical_harmonics", False)
-    max_sh_degree = cfg.preprocessing.graph.get("max_sh_degree", 1)
+    edge_sh_degree = cfg.preprocessing.graph.get("edge_sh_degree", 1)
     base_processed_dir = cfg.preprocessing.processed_dir
 
     if use_sh:
         processed_dir = os.path.join(
-            base_dir, base_processed_dir + "_sh" + str(max_sh_degree)
+            base_dir, base_processed_dir + "_sh" + str(edge_sh_degree)
         )
     else:
         processed_dir = os.path.join(base_dir, base_processed_dir + "_dv")

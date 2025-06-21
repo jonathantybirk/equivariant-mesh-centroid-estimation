@@ -33,7 +33,7 @@ def test_real_data_learning():
     model = EquivariantGNN(
         lr=1e-4,
         weight_decay=0,
-        multiplicity=2,
+        node_multiplicity=2,
         message_passing_steps=3,
         num_cg_layers=1,
         final_mlp_dims=[64, 32],

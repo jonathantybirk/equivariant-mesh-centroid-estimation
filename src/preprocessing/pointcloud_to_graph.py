@@ -48,7 +48,7 @@ def build_graph_from_pointcloud(
     target: np.ndarray,
     k: int,
     use_spherical_harmonics: bool = False,
-    max_sh_degree: int = 1,
+    edge_sh_degree: int = 1,
     debug: bool = False,
     normalize_pointcloud: bool = True,
 ):
@@ -60,7 +60,7 @@ def build_graph_from_pointcloud(
         target: (3,) array representing the object's mesh centroid.
         k: Number of nearest neighbors for each node.
         use_spherical_harmonics: Whether to compute SH features for edge attributes
-        max_sh_degree: Maximum spherical harmonic degree for edge features
+        edge_sh_degree: Maximum spherical harmonic degree for edge features
         debug: Whether to show debug information
         normalize_pointcloud: Whether to center each point cloud at the origin
 
@@ -76,7 +76,7 @@ def build_graph_from_pointcloud(
     if debug:
         print(f"  [GRAPH] Building graph: {N} nodes, k={k} neighbors")
         if use_spherical_harmonics:
-            print(f"  [SH] Computing spherical harmonics with max_l={max_sh_degree}")
+            print(f"  [SH] Computing spherical harmonics with max_l={edge_sh_degree}")
 
     # Normalize point cloud by centering it at origin
     original_points = points.copy()
@@ -126,12 +126,12 @@ def build_graph_from_pointcloud(
     if use_spherical_harmonics:
         # Compute spherical harmonics features for displacement vectors
         edge_attr = compute_spherical_harmonics_preprocessing(
-            displacement_vectors, max_l=max_sh_degree
+            displacement_vectors, max_l=edge_sh_degree
         )
         if debug:
             print(f"  [SH] SH edge features shape: {edge_attr.shape}")
             print(
-                f"  [SH] SH features per edge: {edge_attr.size(1)} (sum of 2*l+1 for l=0 to {max_sh_degree})"
+                f"  [SH] SH features per edge: {edge_attr.size(1)} (sum of 2*l+1 for l=0 to {edge_sh_degree})"
             )
     else:
         # Use raw displacement vectors
@@ -157,7 +157,7 @@ def build_graph_from_pointcloud(
         "metadata": {
             "k_neighbors": k,
             "use_spherical_harmonics": use_spherical_harmonics,
-            "max_sh_degree": max_sh_degree if use_spherical_harmonics else None,
+            "edge_sh_degree": edge_sh_degree if use_spherical_harmonics else None,
             "edge_attr_dim": edge_attr.size(1),
             "normalized_pointcloud": normalize_pointcloud,
         },
@@ -172,7 +172,7 @@ def process_point_cloud_files(
     output_dir=None,
     k_nn=2,
     use_sh=True,
-    max_sh_degree=1,
+    edge_sh_degree=1,
     normalize_pointcloud=True,
 ):
     """Process all point cloud files and convert them to graph format"""
@@ -194,7 +194,7 @@ def process_point_cloud_files(
         base_output_dir = cfg.preprocessing.processed_dir
         k_nn = cfg.preprocessing.graph.k_nn
         use_sh = cfg.preprocessing.graph.get("use_spherical_harmonics", False)
-        max_sh_degree = cfg.preprocessing.graph.get("max_sh_degree", 1)
+        edge_sh_degree = cfg.preprocessing.graph.get("edge_sh_degree", 1)
         normalize_pointcloud = cfg.preprocessing.graph.get("normalize_pointcloud", True)
 
         # Modify output directory based on SH usage
@@ -235,7 +235,7 @@ def process_point_cloud_files(
         print(f"   Spherical Harmonics: {use_sh}")
         print(f"   Normalize Point Clouds: {normalize_pointcloud}")
         if use_sh:
-            print(f"   Max SH degree: {max_sh_degree}")
+            print(f"   Max SH degree: {edge_sh_degree}")
             print(f"   Note: Using SH-specific output directory")
         else:
             print(f"   Note: Using raw displacement vectors")
@@ -303,7 +303,7 @@ def process_point_cloud_files(
                 mesh_centroid,
                 k_nn,
                 use_sh,
-                max_sh_degree,
+                edge_sh_degree,
                 debug=debug,
                 normalize_pointcloud=normalize_pointcloud,
             )
@@ -338,7 +338,7 @@ def process_point_cloud_files(
                     "num_edges": graph_data["num_edges"],
                     "edge_attr_dim": graph_data["edge_attr"].size(1),
                     "use_spherical_harmonics": use_sh,
-                    "max_sh_degree": max_sh_degree if use_sh else None,
+                    "edge_sh_degree": edge_sh_degree if use_sh else None,
                     "k_neighbors": k_nn,
                     "normalized_pointcloud": normalize_pointcloud,
                 }
@@ -355,7 +355,7 @@ def process_point_cloud_files(
         "total_files": processed_count,
         "edge_attr_dim": file_metadata[0]["edge_attr_dim"] if file_metadata else None,
         "use_spherical_harmonics": use_sh,
-        "max_sh_degree": max_sh_degree if use_sh else None,
+        "edge_sh_degree": edge_sh_degree if use_sh else None,
         "k_neighbors": k_nn,
         "normalized_pointcloud": normalize_pointcloud,
         "files": file_metadata,

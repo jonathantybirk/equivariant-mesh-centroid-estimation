@@ -45,7 +45,7 @@ def load_model_from_checkpoint(checkpoint_path, device="cpu"):
             "hidden_dim",
             "message_passing_steps",
             "final_mlp_dims",
-            "max_sh_degree",
+            "edge_sh_degree",
             "init_method",
             "seed",
             "debug",
