@@ -1,0 +1,70 @@
+5408f65d Benjamin Banks 2025-06-21T18:57:23+02:00 corrected math
+2f2760d1 Benjamin Banks 2025-06-21T14:01:18+02:00 working model
+8241b838 Benjamin Banks 2025-06-21T01:07:06+02:00 clean up
+7809bd10 Benjamin Banks 2025-06-19T19:16:05+02:00 fix bias
+a36a9c25 Benjamin Banks 2025-06-17T13:40:23+02:00 update base model
+0148487f Benjamin Banks 2025-06-17T12:51:15+02:00 fix com
+bd8efdfc Jonathan Tybirk 2025-06-16T22:46:06+02:00 Update parameter_logger.py
+1d441c86 Jonathan Tybirk 2025-06-16T22:40:37+02:00 Update config_basic_gnn_augmented.yaml
+c60f6e92 Jonathan Tybirk 2025-06-16T19:57:00+02:00 augmented GNN
+4e1d0b82 Jonathan Tybirk 2025-06-15T22:29:03+02:00 skip-pointcloud and skip-graph implemented
+955282de Jonathan Tybirk 2025-06-15T21:25:59+02:00 right file names for pointcloud->graph preprocesssing
+b65da670 Benjamin Banks 2025-06-15T20:47:44+02:00 Merge branch 'main' of https://github.com/jonathantybirk/equivariant-center-of-mass-estimation
+6fa40867 Benjamin Banks 2025-06-15T20:47:28+02:00 add baseline
+6de6202b Jonathan Tybirk 2025-06-12T15:35:20+02:00 Add mesh collection script
+ecd67d5f Benjamin Banks 2025-06-10T02:08:26+02:00 Merge branch 'main' of https://github.com/jonathantybirk/equivariant-center-of-mass-estimation
+a98cfa36 Benjamin Banks 2025-06-10T02:08:21+02:00 working training eq model
+ea790aef Jonathan Tybirk 2025-06-09T23:41:50+02:00 small update to pointcloud visualization script
+4a45da8f Jonathan Tybirk 2025-06-09T22:37:10+02:00 Preprocessing updated
+5101ecc5 Benjamin Banks 2025-06-09T15:52:43+02:00 training guide fix
+0c37a3c2 Benjamin Banks 2025-06-09T15:52:15+02:00 config cleaning
+71810c28 Benjamin Banks 2025-06-09T15:20:32+02:00 config cleanup
+af132fbd Benjamin Banks 2025-06-09T14:34:49+02:00 Clean up 🧼
+dccac4be Benjamin Banks 2025-06-09T13:56:55+02:00 Merge branch 'main' of https://github.com/jonathantybirk/equivariant-center-of-mass-estimation
+9522fccd Benjamin Banks 2025-06-09T13:56:50+02:00 graph stats and eq_gnn generalization
+0a49b624 Jonathan Tybirk 2025-06-09T12:00:14+02:00 visualization of meshes, pointclouds
+1d14d14c Benjamin Banks 2025-06-09T11:25:10+02:00 simplified model
+afaacfe6 Benjamin Banks 2025-06-09T00:41:29+02:00 optimized preprocessing
+5edfe693 Benjamin Banks 2025-06-08T22:33:39+02:00 Merge branch 'main' of https://github.com/jonathantybirk/equivariant-center-of-mass-estimation
+4c1cca6d Benjamin Banks 2025-06-08T22:31:28+02:00 base model fix metrics
+7c8465c2 Jonathan Tybirk 2025-06-08T22:12:54+02:00 deletion of meshes (now about 11500 left)
+bb54a8d7 Jonathan Tybirk 2025-06-08T21:43:27+02:00 new meshes
+d662b29e Benjamin Banks 2025-06-08T01:03:37+02:00 fixed batchsize
+70c36c0a Benjamin Banks 2025-06-08T00:14:53+02:00 Merge branch 'main' of https://github.com/jonathantybirk/equivariant-center-of-mass-estimation
+17f69679 Benjamin Banks 2025-06-08T00:14:47+02:00 multiplicity
+357d643c Benjamin Banks 2025-06-07T21:29:58+02:00 optimize model
+46084a50 Benjamin Banks 2025-06-07T17:46:05+02:00 wandb working
+d5c4944b Benjamin Banks 2025-06-07T16:16:01+02:00 training with improvements
+6bc1a17a Jonathan Tybirk 2025-06-05T21:05:12+02:00 78 new meshes
+0e05dced Benjamin Banks 2025-06-03T22:57:13+02:00 equivariant gnn
+ffa7cf79 Jonathan Tybirk 2025-05-24T20:51:47+02:00 new meshes
+b181f41f Jonathan Tybirk 2025-05-06T20:03:51+02:00 gitignore model_comparison folder
+6937f7a0 Jonathan Tybirk 2025-05-06T20:02:50+02:00 implement baselines and evaluation (some plots for now)
+500dee51 Jonathan Tybirk 2025-05-06T19:36:49+02:00 Delete .gitkeep
+181b3063 Jonathan Tybirk 2025-05-06T19:35:20+02:00 work in progress
+2c9aaa7d Jonathan Tybirk 2025-05-06T18:57:31+02:00 work in progress
+8136204a Jonathan Tybirk 2025-05-06T09:50:34+02:00 work in progress
+0e8d7dd6 jonathantybirk 2025-05-06T00:58:23+02:00 work in progress
+562697ef jonathantybirk 2025-05-06T00:52:05+02:00 work in progress
+268c80a3 jonathantybirk 2025-05-02T22:51:50+02:00 MOAR DATA
+51c88a47 jonathantybirk 2025-04-29T02:11:53+02:00 Update config.yaml
+e1ce94b9 LucasLista 2025-04-21T03:04:40+02:00 v0.0 of equivariant GNN
+5e5ee52c LucasLista 2025-04-21T02:53:34+02:00 gitignored logs
+e0319a2f LucasLista 2025-04-20T23:09:03+02:00 Cleanup and fixes to readme and gitignore
+4703c7f1 jonathantybirk 2025-04-19T00:47:17+02:00 fixed data formatting
+4e4c580b Jonathan Tybirk 2025-04-14T23:17:37+02:00 train-test split and evaluation
+79106db5 Lucas Rieneck Gottfried Pedersen 2025-04-14T21:58:16+02:00 Merge branch 'main' of https://github.com/jonathantybirk/equivariant-center-of-mass-estimation
+6d94ede1 Lucas Rieneck Gottfried Pedersen 2025-04-14T21:58:14+02:00 fixed .gitignore v2
+8033393c bforbanks 2025-04-14T21:56:49+02:00 update README
+86ecc5e2 Lucas Rieneck Gottfried Pedersen 2025-04-14T21:51:17+02:00 Some .gitignore stuff
+e069711a Lucas Rieneck Gottfried Pedersen 2025-04-14T21:47:17+02:00 Remove tracked files that should be ignored
+53fb3abf Lucas Pedersen 2025-04-14T21:35:18+02:00 fixed requirements.txt
+5a2bc1fc bforbanks 2025-04-14T21:33:14+02:00 fix requirements.txt
+1bbd298a Jonathan Tybirk 2025-04-14T21:23:02+02:00 First model, dataloading, monitoring, and refactoring
+960a4776 Jonathan Tybirk 2025-04-13T20:47:37+02:00 sensible renaming (and a bunch of outputs, sorry about that)
+8431f333 Jonathan Tybirk 2025-04-07T21:35:10+02:00 might work now, will debug tomorrow
+e368e396 Jonathan Tybirk 2025-04-07T20:52:36+02:00 yuuuuuge update - hydra implementation, fixed preprocessing (almost, still need last bit to work with Lucas' code)
+de55618e Jonathan Tybirk 2025-04-07T18:45:40+02:00 Update to structure, begin implementation that works with Lucas' structure
+714ed720 Jonathan Tybirk 2025-04-07T01:47:36+02:00 pytorch implementation by ai (to be refined)
+2b530e39 Jonathan Tybirk 2025-04-01T14:21:59+02:00 initial
+616d5e20 Jonathan Tybirk 2025-04-01T13:44:35+02:00 Initial commit
