@@ -22,604 +22,448 @@ def validate_triangle_inequality(l1, l2, l3):
         )
 
 
-def xavier_init_steerable(weight_tensor, fan_in, fan_out):
-    """Xavier (Glorot) normal initialization adapted for steerable networks"""
-    # Standard Xavier: variance = 2 / (fan_in + fan_out)
-    std = math.sqrt(2.0 / (fan_in + fan_out))
-    with torch.no_grad():
-        weight_tensor.normal_(0, std)
-
-
-def xavier_uniform_init_steerable(weight_tensor, fan_in, fan_out):
-    """Xavier (Glorot) uniform initialization adapted for steerable networks"""
-    # Xavier uniform: bound = sqrt(6 / (fan_in + fan_out))
-    # This gives same variance as Xavier normal: 2 / (fan_in + fan_out)
-    bound = math.sqrt(6.0 / (fan_in + fan_out))
-    with torch.no_grad():
-        weight_tensor.uniform_(-bound, bound)
-
-
-class CGCoefficientsCache:
+class EquivariantCGLayer(nn.Module):
     """
-    Global cache for Clebsch-Gordan coefficients to avoid recomputation
+    Equivariant CG layer following math.md specification exactly
+
+    Implements: m_ij = σ_g(W_a^(2) σ_g(W_a^(1) h_ij))
+    And: f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
     """
 
-    _cache = {}
-
-    @classmethod
-    def get_coefficients(cls, l1, l2, l3, device):
-        """Get cached CG coefficients or compute and cache them"""
-        key = (l1, l2, l3)
-        if key not in cls._cache:
-            try:
-                # Always compute on CPU since we register as buffers that move with model
-                cls._cache[key] = _wigner._so3_clebsch_gordan(l1, l2, l3).float()
-            except Exception:
-                cls._cache[key] = None
-
-        cg_coeffs = cls._cache[key]
-        if cg_coeffs is not None:
-            # If device is None, return on CPU (will be moved via register_buffer)
-            if device is not None:
-                return cg_coeffs.to(device)
-            else:
-                return cg_coeffs
-        return None
-
-
-class MultiCGLayer(nn.Module):
-    """
-    Layer that applies multiple CG tensor products in sequence to create richer messages
-    """
-
-    def __init__(
-        self, max_sh_degree, base_l_values, multiplicity, num_cg_layers, debug=False
-    ):
+    def __init__(self, max_sh_degree, base_l_values, multiplicity, debug=False):
         super().__init__()
         self.max_sh_degree = max_sh_degree
-        self.base_l_values = base_l_values
+        self.base_l_values = base_l_values  # [0, 1, 2]
         self.multiplicity = multiplicity
-        self.num_cg_layers = num_cg_layers
         self.debug = debug
 
-        # Create multiple CG layers
-        self.cg_layers = nn.ModuleList()
-        for layer_idx in range(self.num_cg_layers):
-            layer_weights = nn.ParameterDict()
-            # For each layer, precompute CG coefficients and create weights
-            self._setup_cg_layer(layer_idx, layer_weights)
-            self.cg_layers.append(layer_weights)
+        # Precompute CG tensor and learnable weights
+        self._precompute_cg_tensor()
 
-    def _setup_cg_layer(self, layer_idx, layer_weights):
-        """Setup CG coefficients and weights for one layer"""
-        # Store valid combinations for this layer
-        valid_combinations = []
+        # Learnable weights W_a^(1) and W_a^(2) for each edge attribute degree
+        # Following math.md: m_ij = σ_g(W_a^(2) σ_g(W_a^(1) h_ij))
+        self.edge_weights_1 = nn.ParameterDict()
+        self.edge_weights_2 = nn.ParameterDict()
+
+        for a_l in range(self.max_sh_degree + 1):
+            # Weights for each edge attribute degree
+            self.edge_weights_1[str(a_l)] = nn.Parameter(torch.randn(1) * 0.1)
+            self.edge_weights_2[str(a_l)] = nn.Parameter(torch.randn(1) * 0.1)
+
+        # ψ_f MLP for node updates: f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
+        # Input: invariant features from f_i + invariant features from messages + distance
+        invariant_dim = len(base_l_values)  # One invariant per l-value
+
+        self.psi_f = nn.Sequential(
+            nn.Linear(
+                invariant_dim * 2 + 1, 64
+            ),  # f_i invariants + message invariants + distance
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+            nn.Linear(32, invariant_dim),  # Output gate for each l-type
+            nn.Sigmoid(),
+        )
+
+    def _precompute_cg_tensor(self):
+        """
+        Precompute CG tensor for h ⊗ a → output
+        where h = [f_i, f_j, d] has l-values [0,1,2,0,1,2,0]
+        """
+        # Build h_l_values: [f_i: 0,1,2] + [f_j: 0,1,2] + [d: 0]
+        h_l_values = self.base_l_values + self.base_l_values + [0]
+
+        valid_connections = []
+        cg_tensors = []
 
         if self.debug:
-            print(f"\n[DEBUG] Setting up CG Layer {layer_idx}")
-            print(f"[DEBUG] max_sh_degree: {self.max_sh_degree}")
-            print(f"[DEBUG] base_l_values: {self.base_l_values}")
-            print(f"[DEBUG] multiplicity: {self.multiplicity}")
+            print(f"[DEBUG] Building CG tensor for h ⊗ a → output")
+            print(f"[DEBUG] h_l_values: {h_l_values}")
+            print(f"[DEBUG] a_l_values: {list(range(self.max_sh_degree + 1))}")
+            print(f"[DEBUG] output_l_values: {self.base_l_values}")
 
-        # Precompute CG coefficients
-        for edge_sh_degree in range(self.max_sh_degree + 1):
-            for node_irrep_idx in range(len(self.base_l_values)):
-                for out_irrep_idx in range(len(self.base_l_values)):
+        # Find all valid CG connections
+        for h_idx, h_l in enumerate(h_l_values):
+            for a_l in range(self.max_sh_degree + 1):
+                for out_idx, out_l in enumerate(self.base_l_values):
                     try:
-                        node_l = self.base_l_values[node_irrep_idx]
-                        out_l = self.base_l_values[out_irrep_idx]
+                        validate_triangle_inequality(h_l, a_l, out_l)
 
-                        validate_triangle_inequality(edge_sh_degree, node_l, out_l)
-
-                        cg = _wigner._so3_clebsch_gordan(
-                            edge_sh_degree, node_l, out_l
-                        ).float()
+                        # Get CG coefficients
+                        cg = _wigner._so3_clebsch_gordan(h_l, a_l, out_l).float()
 
                         if cg.abs().sum() > 1e-10:
-                            # Register CG coefficients as buffer
-                            cg_key = f"cg_{layer_idx}_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
-                            self.register_buffer(cg_key, cg)
-
-                            valid_combinations.append(
-                                (edge_sh_degree, node_irrep_idx, out_irrep_idx)
-                            )
+                            valid_connections.append((h_idx, a_l, out_idx))
+                            cg_tensors.append(cg)
 
                             if self.debug:
                                 print(
-                                    f"[DEBUG] Valid CG: l_edge={edge_sh_degree} ⊗ l_node={node_l} → l_out={out_l} | CG shape: {cg.shape}"
+                                    f"[DEBUG] Valid: h[{h_idx}](l={h_l}) ⊗ a(l={a_l}) → out[{out_idx}](l={out_l})"
                                 )
 
-                            # FIXED: Create small neural networks for sophisticated gating
-                            for in_channel in range(self.multiplicity):
-                                for out_channel in range(self.multiplicity):
-                                    mlp_key = f"gate_mlp_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}_{in_channel}_{out_channel}"
-
-                                    # FIXED: Simpler MLP to reduce overfitting
-                                    # Input: distance (1D) + node_invariant (1D) = 2D input
-                                    gate_mlp = nn.Sequential(
-                                        nn.Linear(2, 4),  # Smaller hidden layer
-                                        nn.ReLU(),
-                                        nn.Dropout(
-                                            0.1
-                                        ),  # Add dropout for regularization
-                                        nn.Linear(4, 1),  # Output single gate value
-                                        nn.Tanh(),  # Keep output bounded
-                                    )
-
-                                    # Initialize with smaller weights for stability
-                                    for module in gate_mlp:
-                                        if isinstance(module, nn.Linear):
-                                            nn.init.xavier_uniform_(
-                                                module.weight,
-                                                gain=0.05,  # Even smaller gain
-                                            )
-                                            nn.init.zeros_(module.bias)
-
-                                    layer_weights[mlp_key] = gate_mlp
-                    except Exception as e:
-                        if self.debug:
-                            node_l = (
-                                self.base_l_values[node_irrep_idx]
-                                if node_irrep_idx < len(self.base_l_values)
-                                else "?"
-                            )
-                            out_l = (
-                                self.base_l_values[out_irrep_idx]
-                                if out_irrep_idx < len(self.base_l_values)
-                                else "?"
-                            )
-                            print(
-                                f"[DEBUG] Invalid CG: l_edge={edge_sh_degree} ⊗ l_node={node_l} → l_out={out_l} | Error: {str(e)}"
-                            )
+                    except Exception:
                         continue
 
-        # Store valid combinations for this layer
-        setattr(self, f"valid_combinations_{layer_idx}", valid_combinations)
-
         if self.debug:
-            total_weights = (
-                len(valid_combinations) * self.multiplicity * self.multiplicity
-            )
-            print(
-                f"[DEBUG] Layer {layer_idx}: {len(valid_combinations)} valid CG combinations"
-            )
-            print(f"[DEBUG] Layer {layer_idx}: {total_weights} total learnable weights")
-            print(f"[DEBUG] Valid combinations: {valid_combinations}")
-            print()  # Empty line for readability
+            print(f"[DEBUG] Total valid connections: {len(valid_connections)}")
 
-    def forward(
-        self, node_irreps, edge_index, sh_edge_features, distance_edge_features
-    ):
-        """Apply multiple CG operations in sequence"""
-        device = node_irreps.device
-        num_nodes = node_irreps.shape[0]
-        num_edges = edge_index.shape[1]
+        # Store as buffers
+        self.register_buffer(
+            "valid_connections", torch.tensor(valid_connections, dtype=torch.long)
+        )
 
-        if num_edges == 0:
-            return node_irreps
+        # Store CG tensors
+        for i, cg in enumerate(cg_tensors):
+            self.register_buffer(f"cg_{i}", cg)
 
-        # Keep track of intermediate results
-        current_features = node_irreps
+        self.num_connections = len(valid_connections)
 
-        # Apply each CG layer sequentially
-        for layer_idx in range(self.num_cg_layers):
-            current_features = self._apply_cg_layer(
-                layer_idx,
-                current_features,
-                edge_index,
-                sh_edge_features,
-                distance_edge_features,
-            )
-
-        return current_features
-
-    def _apply_cg_layer(
-        self,
-        layer_idx,
-        node_irreps,
-        edge_index,
-        sh_edge_features,
-        distance_edge_features,
-    ):
-        """Apply one CG layer"""
-        device = node_irreps.device
-        num_nodes = node_irreps.shape[0]
+    def forward(self, edge_index, f, d, a):
+        """
+        Forward pass implementing math.md specification:
+        1. Compute messages m_ij = σ_g(W_a^(2) σ_g(W_a^(1) h_ij))
+        2. Aggregate messages
+        3. Update nodes f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
+        """
+        device = f.device
+        num_nodes = f.shape[0]
         num_edges = edge_index.shape[1]
 
         source_idx = edge_index[0]
         target_idx = edge_index[1]
-        source_features = node_irreps[source_idx]
 
-        # Split source features by irrep type and multiplicity channel
-        source_irrep_channels = []
-        start_idx = 0
-        for irrep_idx, l_value in enumerate(self.base_l_values):
-            base_dim = 2 * l_value + 1  # Compute dimension from l value
-            for channel in range(self.multiplicity):
-                end_idx = start_idx + base_dim
-                source_irrep_channels.append(source_features[:, start_idx:end_idx])
-                start_idx = end_idx
+        # Step 1: Build h = [f_i, f_j, d] for each edge
+        f_source = f[source_idx]  # [num_edges, f_dim]
+        f_target = f[target_idx]  # [num_edges, f_dim]
+        h = torch.cat([f_source, f_target, d], dim=1)  # [num_edges, h_dim]
 
-        # Initialize output messages
-        message_irrep_channels = []
-        for irrep_idx, l_value in enumerate(self.base_l_values):
-            base_dim = 2 * l_value + 1  # Compute dimension from l value
+        # Step 2: Compute messages via CG products with learnable weights
+        out_dim = f.shape[1]
+        messages = torch.zeros(num_edges, out_dim, device=device)
+
+        # Dimensions for indexing
+        h_irrep_dims = []
+        for l in self.base_l_values + self.base_l_values + [0]:
+            h_irrep_dims.append(2 * l + 1)
+
+        a_irrep_dims = []
+        for l in range(self.max_sh_degree + 1):
+            a_irrep_dims.append(2 * l + 1)
+
+        out_irrep_dims = []
+        for l in self.base_l_values:
+            out_irrep_dims.append(2 * l + 1)
+
+        # Process each valid connection with learnable weights
+        for conn_idx in range(self.num_connections):
+            h_idx, a_l, out_idx = self.valid_connections[conn_idx]
+            cg = getattr(self, f"cg_{conn_idx}")
+
+            # Get learnable edge weights (convert tensor element to int)
+            a_l_int = int(a_l.item()) if hasattr(a_l, "item") else int(a_l)
+            w1 = self.edge_weights_1[str(a_l_int)]
+            w2 = self.edge_weights_2[str(a_l_int)]
+
+            # Get h irrep features (convert tensor element to int)
+            h_idx_int = int(h_idx.item()) if hasattr(h_idx, "item") else int(h_idx)
+            h_start = sum(h_irrep_dims[:h_idx_int]) * self.multiplicity
+            h_end = h_start + h_irrep_dims[h_idx_int] * self.multiplicity
+            h_features = h[:, h_start:h_end]
+
+            # Get a irrep features
+            a_start = sum(a_irrep_dims[:a_l_int])
+            a_end = a_start + a_irrep_dims[a_l_int]
+            a_features = a[:, a_start:a_end]
+
+            # Apply CG product for each multiplicity channel
             for channel in range(self.multiplicity):
-                message_irrep_channels.append(
-                    torch.zeros(num_edges, base_dim, device=device)
+                h_ch_start = channel * h_irrep_dims[h_idx_int]
+                h_ch_end = (channel + 1) * h_irrep_dims[h_idx_int]
+                h_ch = h_features[:, h_ch_start:h_ch_end]
+
+                # CG product: h ⊗ a → message
+                raw_msg = torch.einsum("hao,eh,ea->eo", cg, h_ch, a_features)
+
+                # Apply two-layer edge gating: m = σ_g(W_a^(2) σ_g(W_a^(1) h))
+                # First layer
+                gated_msg_1 = torch.tanh(w1 * raw_msg)
+                # Second layer
+                gated_msg_2 = torch.tanh(w2 * gated_msg_1)
+
+                # Add to output messages
+                out_idx_int = (
+                    int(out_idx.item()) if hasattr(out_idx, "item") else int(out_idx)
                 )
+                out_start = (
+                    sum(out_irrep_dims[:out_idx_int]) * self.multiplicity
+                    + channel * out_irrep_dims[out_idx_int]
+                )
+                out_end = out_start + out_irrep_dims[out_idx_int]
+                messages[:, out_start:out_end] += gated_msg_2
 
-        # Get valid combinations and weights for this layer
-        valid_combinations = getattr(self, f"valid_combinations_{layer_idx}")
-        layer_weights = self.cg_layers[layer_idx]
+        # Step 3: Aggregate messages to nodes
+        aggregated_messages = torch.zeros(num_nodes, out_dim, device=device)
+        aggregated_messages.index_add_(0, target_idx, messages)
 
-        # FIXED: Compute invariant features for each source node for gating
-        source_invariants = []
+        # Step 4: Node update f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
+        # Extract invariant features from current node features
+        f_invariants = self._extract_invariant_features(f)
+
+        # Extract invariant features from aggregated messages
+        msg_invariants = self._extract_invariant_features(aggregated_messages)
+
+        # Average distance to neighbors for each node
+        node_distances = torch.zeros(num_nodes, 1, device=device)
+        node_distances.index_add_(0, target_idx, d)
+        neighbor_counts = torch.zeros(num_nodes, device=device)
+        neighbor_counts.index_add_(0, target_idx, torch.ones(num_edges, device=device))
+        avg_distances = node_distances / (neighbor_counts.unsqueeze(1) + 1e-8)
+
+        # ψ_f MLP: takes invariants from f_i, messages, and distance
+        psi_input = torch.cat([f_invariants, msg_invariants, avg_distances], dim=1)
+        gates = self.psi_f(psi_input)  # [num_nodes, len(base_l_values)]
+
+        # Apply gates to each l-type separately
+        updated_f = torch.zeros_like(f)
         start_idx = 0
+
         for l_idx, l_value in enumerate(self.base_l_values):
             irrep_dim = 2 * l_value + 1
-            l_channels = []
+            gate = gates[:, l_idx : l_idx + 1]  # [num_nodes, 1]
+
             for channel in range(self.multiplicity):
                 end_idx = start_idx + irrep_dim
-                l_channels.append(source_features[:, start_idx:end_idx])
+
+                # Gated update: f_new = f_old + gate * message
+                updated_f[:, start_idx:end_idx] = (
+                    f[:, start_idx:end_idx]
+                    + gate * aggregated_messages[:, start_idx:end_idx]
+                )
                 start_idx = end_idx
 
-            # Combine channels and compute invariant
-            l_features = torch.mean(torch.stack(l_channels, dim=0), dim=0)
+        return updated_f
+
+    def _extract_invariant_features(self, f):
+        """
+        Extract invariant features following math.md specification:
+        s_i = [⟨f_{i,l=0}⟩, ||f_{i,l=1}||_2, ..., ||f_{i,l=L}||_2]
+        """
+        invariants = []
+        start_idx = 0
+
+        for l_value in self.base_l_values:
+            irrep_dim = 2 * l_value + 1
+
+            # Collect all channels for this l-value
+            l_features = []
+            for channel in range(self.multiplicity):
+                end_idx = start_idx + irrep_dim
+                l_features.append(f[:, start_idx:end_idx])
+                start_idx = end_idx
+
+            # Stack and compute invariant
+            l_tensor = torch.stack(
+                l_features, dim=1
+            )  # [num_nodes, multiplicity, irrep_dim]
+
             if l_value == 0:
-                invariant = l_features.mean(dim=1, keepdim=True)
+                # For l=0 (scalars): take mean ⟨f_{i,l=0}⟩
+                invariant = l_tensor.mean(dim=1).mean(
+                    dim=1, keepdim=True
+                )  # [num_nodes, 1]
             else:
-                invariant = torch.norm(l_features, dim=1, keepdim=True)
-            source_invariants.append(invariant)
+                # For l>0 (vectors/tensors): take L2 norm ||f_{i,l}||_2
+                invariant = torch.norm(l_tensor, dim=2).mean(
+                    dim=1, keepdim=True
+                )  # [num_nodes, 1]
 
-        # Combine all invariants into single feature per source node
-        source_invariant_features = torch.cat(source_invariants, dim=1).mean(
-            dim=1, keepdim=True
-        )  # [num_edges, 1]
+            invariants.append(invariant)
 
-        # Process valid CG combinations
-        for edge_sh_degree, node_irrep_idx, out_irrep_idx in valid_combinations:
-            cg_key = f"cg_{layer_idx}_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}"
-            cg_coeffs = getattr(self, cg_key)
-
-            if edge_sh_degree >= len(sh_edge_features):
-                continue
-
-            edge_feat = sh_edge_features[edge_sh_degree]
-
-            # Process all channel combinations
-            for in_channel in range(self.multiplicity):
-                for out_channel in range(self.multiplicity):
-                    mlp_key = f"gate_mlp_{edge_sh_degree}_{node_irrep_idx}_{out_irrep_idx}_{in_channel}_{out_channel}"
-                    gate_mlp = layer_weights[mlp_key]
-
-                    input_channel_idx = node_irrep_idx * self.multiplicity + in_channel
-                    node_feat = source_irrep_channels[input_channel_idx]
-
-                    # CG tensor product
-                    msg = torch.einsum("ijk,ei,ej->ek", cg_coeffs, edge_feat, node_feat)
-
-                    # FIXED: Use sophisticated gating with distance + invariant features
-                    # Prepare inputs for gate MLP: [distance, source_invariant]
-                    gate_inputs = torch.cat(
-                        [
-                            distance_edge_features,  # [num_edges, 1]
-                            source_invariant_features,  # [num_edges, 1]
-                        ],
-                        dim=1,
-                    )  # [num_edges, 2]
-
-                    # Apply gate MLP for complex distance-dependent gating
-                    gate = gate_mlp(gate_inputs).squeeze(-1)  # [num_edges]
-
-                    output_channel_idx = out_irrep_idx * self.multiplicity + out_channel
-                    message_irrep_channels[output_channel_idx] += (
-                        gate.unsqueeze(-1) * msg
-                    )
-
-        # Aggregate messages
-        aggregated_channels = []
-        for channel_idx in range(len(message_irrep_channels)):
-            base_dim = message_irrep_channels[channel_idx].shape[1]
-            agg_tensor = torch.zeros(num_nodes, base_dim, device=device)
-            agg_tensor.index_add_(0, target_idx, message_irrep_channels[channel_idx])
-            aggregated_channels.append(agg_tensor)
-
-        updated_irreps = torch.cat(aggregated_channels, dim=1)
-        return updated_irreps
+        return torch.cat(invariants, dim=1)  # [num_nodes, len(base_l_values)]
 
 
 class EquivariantGNN(BaseModel):
     """
-    Ultra-fast GPU-optimized equivariant GNN - mathematically correct version
-
-    Key features:
-    1. Proper CG tensor products for exact equivariance
-    2. GPU-optimized tensor operations
-    3. No operations that break equivariance (like residual connections)
-    4. Precomputed CG coefficients as buffers
+    Equivariant GNN following math.md specification exactly
     """
 
     def __init__(
         self,
-        message_passing_steps=3,
-        final_mlp_dims=[32, 16],
+        message_passing_steps=2,
+        final_mlp_dims=[64, 32],
         max_sh_degree=2,
         init_method="xavier",
         seed=42,
         debug=False,
         lr=1e-3,
         weight_decay=1e-5,
-        multiplicity=1,
+        multiplicity=3,
         dropout=0.1,
-        num_cg_layers=2,
         base_l_values=[0, 1, 2],
     ):
         super().__init__(lr=lr, weight_decay=weight_decay)
         torch.manual_seed(seed)
-        self.init_method = init_method
 
         self.max_sh_degree = max_sh_degree
         self.debug = debug
         self.message_passing_steps = message_passing_steps
         self.multiplicity = multiplicity
         self.dropout = dropout
-        self.num_cg_layers = num_cg_layers
         self.base_l_values = base_l_values
 
-        # Precompute ALL CG coefficients we need and store as buffers
-        self._precompute_cg_coefficients()
-
-        # Message passing layers using MultiCGLayer
+        # Message passing layers
         self.message_layers = nn.ModuleList(
             [
-                MultiCGLayer(
+                EquivariantCGLayer(
                     max_sh_degree=self.max_sh_degree,
                     base_l_values=self.base_l_values,
                     multiplicity=self.multiplicity,
-                    num_cg_layers=self.num_cg_layers,
                     debug=self.debug,
                 )
                 for _ in range(self.message_passing_steps)
             ]
         )
 
-        # FIXED: More robust final MLP with better scaling
+        # Final MLP for centroid prediction (invariant readout)
+        # Input: invariant features s_i = [⟨f_{i,l=0}⟩, ||f_{i,l=1}||_2, ..., ||f_{i,l=L}||_2]
+        invariant_dim = len(self.base_l_values)
+
         final_layers = []
-        prev_dim = len(self.base_l_values)  # One invariant per l-value
+        final_layers.append(nn.LayerNorm(invariant_dim))
 
-        # Add input normalization
-        final_layers.append(nn.LayerNorm(prev_dim))
-
-        for i, dim in enumerate(final_mlp_dims):
+        prev_dim = invariant_dim
+        for dim in final_mlp_dims:
             final_layers.append(nn.Linear(prev_dim, dim))
-            final_layers.append(
-                nn.LayerNorm(dim)
-            )  # Layer normalization for stable training
+            final_layers.append(nn.LayerNorm(dim))
             final_layers.append(nn.ReLU())
             if dropout > 0:
-                final_layers.append(nn.Dropout(dropout))  # Dropout for regularization
+                final_layers.append(nn.Dropout(dropout))
             prev_dim = dim
 
-        # FIXED: Add a final layer with proper initialization
         final_layers.append(nn.Linear(prev_dim, 1))
-        # Don't add activation - let it output raw logits
-
         self.final_mlp = nn.Sequential(*final_layers)
 
-        # FIXED: Initialize final layer with smaller weights
-        with torch.no_grad():
-            self.final_mlp[-1].weight.data *= 0.1
-            self.final_mlp[-1].bias.data.fill_(0.0)
-
-        # Initialize weights properly
+        # Initialize weights
         self._initialize_weights()
 
     def _initialize_weights(self):
-        """Initialize weights for better training stability for the CG layers"""
-        import math
+        """Initialize weights for stable training"""
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_uniform_(module.weight, gain=0.1)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
 
-        # Iterate through each message passing layer (MultiCGLayer)
-        for multi_cg_layer in self.message_layers:
-            # multi_cg_layer.cg_layers is a ModuleList of ParameterDict for each CG sub-layer
-            for layer_idx, cg_layer in enumerate(multi_cg_layer.cg_layers):
-                valid_combos = getattr(
-                    multi_cg_layer, f"valid_combinations_{layer_idx}", []
-                )
-                fan_in = len(valid_combos) if valid_combos else 1
-                fan_out = (
-                    self.multiplicity
-                )  # Each weight is a scalar; using multiplicity for scaling
-
-                for key, param in cg_layer.items():
-                    # FIXED: Handle both nn.Parameter and nn.Module (MLP) cases
-                    if isinstance(param, nn.Parameter):
-                        # Original parameter initialization
-                        if self.init_method == "xavier":
-                            std = math.sqrt(2.0 / (fan_in + fan_out)) * 0.1
-                            with torch.no_grad():
-                                param.normal_(0, std)
-                        elif self.init_method == "xavier_uniform":
-                            xavier_uniform_init_steerable(param, fan_in, fan_out)
-                        elif self.init_method == "constant":
-                            with torch.no_grad():
-                                param.fill_(0.01)
-                        elif self.init_method == "uniform":
-                            bound = 0.1 / math.sqrt(fan_in) if fan_in > 0 else 0.01
-                            with torch.no_grad():
-                                param.uniform_(-bound, bound)
-                        elif self.init_method == "kaiming":
-                            std = math.sqrt(2.0 / fan_in) * 0.1 if fan_in > 0 else 0.01
-                            with torch.no_grad():
-                                param.normal_(0, std)
-                    elif isinstance(param, nn.Module):
-                        # MLP initialization - already done in _setup_cg_layer
-                        pass
-
-    def _precompute_cg_coefficients(self):
-        """Precompute and register all CG coefficients as buffers"""
-        # CG for invariant features: l=1 ⊗ l=1 -> l=0
-        cg_l1_l1_l0 = _wigner._so3_clebsch_gordan(1, 1, 0).float()  # [3, 3, 1]
-        self.register_buffer("cg_l1_l1_l0", cg_l1_l1_l0)
-
-    def forward(self, x, edge_index, edge_attr, batch=None, node_pos=None):
-        """Ultra-fast forward pass with proper equivariance"""
+    def forward(self, x, edge_index, r, batch=None):
+        """
+        Forward pass following math.md specification:
+        1. Initialize features with spherical harmonics
+        2. Message passing
+        3. Invariant readout s_i = [⟨f_{i,l=0}⟩, ||f_{i,l=1}||_2, ...]
+        4. Centroid estimation ĉ = Σ_i ω_i x_i
+        """
         if self.debug:
             start_time = time.time()
 
         device = x.device
         num_nodes = x.shape[0]
 
-        # Use positions
-        if node_pos is None:
-            node_pos = x
+        # Step 1: Initialize node features with spherical harmonics of positions
+        # Following math.md: "For the first layer, we do not have any node feature f,
+        # so we simply set them to spherical harmonics node positions"
+        f = self._initialize_node_features(x, device)
 
-        # FIXED: Initialize node features with small random values to avoid dead ReLUs
-        initial_features = []
-
-        for l_value in self.base_l_values:
-            irrep_dim = 2 * l_value + 1  # Compute dimension from l value
-            for channel in range(self.multiplicity):
-                if (
-                    l_value == 0
-                ):  # Scalar features - initialize to small positive values
-                    irrep_channel = (
-                        torch.ones(num_nodes, irrep_dim, device=device) * 0.1
-                    )
-                else:  # Higher order features - initialize to small random values (NOT zeros!)
-                    irrep_channel = (
-                        torch.randn(num_nodes, irrep_dim, device=device) * 0.01
-                    )
-                initial_features.append(irrep_channel)
-
-        node_irreps = torch.cat(initial_features, dim=1)  # [N, 2+6] for mult=2
+        # Prepare edge attributes
+        a = spherical_harmonics(list(range(self.max_sh_degree + 1)), r, normalize=True)
+        d = torch.norm(r, dim=1, keepdim=True)
 
         if self.debug:
-            embed_time = time.time() - start_time
-            mp_start = time.time()
+            print(f"[DEBUG] Initial f shape: {f.shape}")
+            print(f"[DEBUG] Edge attr a shape: {a.shape}")
+            print(f"[DEBUG] Edge distance d shape: {d.shape}")
 
-        # Split edge attributes to irrep format efficiently
-        sh_edge_features = spherical_harmonics(
-            self.max_sh_degree, edge_attr, normalize=True
-        )
-        sh_edge_features = self._split_sh_features_tensor(sh_edge_features)
-        distance_edge_features = torch.norm(edge_attr, dim=1, keepdim=True)
-
-        # Message passing with proper equivariance - FIXED: Add skip connections
-        residual_irreps = node_irreps  # Store initial features
+        # Step 2: Message passing
         for i, layer in enumerate(self.message_layers):
             if self.debug:
                 layer_start = time.time()
 
-            # Apply message passing layer
-            new_irreps = layer(
-                node_irreps, edge_index, sh_edge_features, distance_edge_features
-            )
-
-            # FIXED: Add skip connection with learnable mixing
-            if i > 0:  # Skip connection after first layer
-                node_irreps = 0.8 * new_irreps + 0.2 * node_irreps
-            else:
-                node_irreps = new_irreps
+            f = layer(edge_index, f, d, a)
 
             if self.debug:
-                print(f"[DEBUG] Layer {i}: {time.time() - layer_start:.3f}s")
+                print(f"[DEBUG] Layer {i} output shape: {f.shape}")
+                print(f"[DEBUG] Layer {i} time: {time.time() - layer_start:.3f}s")
+
+        # Step 3: Invariant readout s_i = [⟨f_{i,l=0}⟩, ||f_{i,l=1}||_2, ...]
+        invariant_features = self.message_layers[0]._extract_invariant_features(f)
 
         if self.debug:
-            mp_time = time.time() - mp_start
-            final_start = time.time()
+            print(f"[DEBUG] Final invariant features shape: {invariant_features.shape}")
 
-        # Extract invariant features efficiently - handle multiplicity
-        invariant_features_list = []
-
-        # Extract features by l value and compute invariants
-        start_idx = 0
-        for l_idx, l_value in enumerate(self.base_l_values):
-            irrep_dim = 2 * l_value + 1
-
-            # Extract all channels for this l value
-            l_channels = []
-            for channel in range(self.multiplicity):
-                end_idx = start_idx + irrep_dim
-                l_channels.append(node_irreps[:, start_idx:end_idx])
-                start_idx = end_idx
-
-            # Combine channels (simple average)
-            l_features = torch.mean(
-                torch.stack(l_channels, dim=0), dim=0
-            )  # [N, irrep_dim]
-
-            if l_value == 0:
-                # l=0 features are already invariant - take mean across channels
-                scalar_inv = l_features.mean(dim=1, keepdim=True)  # [N, 1]
-                # FIXED: Add proper scaling for scalar features
-                invariant_features_list.append(scalar_inv * 10.0)  # Scale up
-            else:
-                # For l>0: compute invariant via norm (rotation-invariant)
-                l_norm = torch.norm(l_features, dim=1, keepdim=True)  # [N, 1]
-                # FIXED: Add non-linearity and scaling for vector features
-                l_norm_scaled = torch.tanh(l_norm) * 5.0  # Scale and add non-linearity
-                invariant_features_list.append(l_norm_scaled)
-
-        # Combine all invariant features
-        invariant_features = torch.cat(
-            invariant_features_list, dim=1
-        )  # [N, len(base_l_values)]
-
-        # Compute raw logits (no softmax yet)
+        # Step 4: Compute logits z_i = g_θ(s_i)
         raw_logits = self.final_mlp(invariant_features).squeeze(-1)  # [N]
 
-        # DISPLACEMENT FROM MEAN APPROACH
+        # Step 5: Centroid estimation ĉ = Σ_i ω_i x_i where ω_i = softmax(z_i)
         if batch is not None:
-            # For batched processing, compute displacement per graph
+            # Batched processing
             unique_batches = torch.unique(batch)
             centroid_predictions = []
-            for i, b in enumerate(unique_batches):
+
+            for b in unique_batches:
                 mask = batch == b
                 batch_logits = raw_logits[mask]
-                batch_positions = node_pos[mask]
+                batch_positions = x[mask]
 
-                # FIXED: Use more of geometric center for stability
-                batch_weights = torch.softmax(batch_logits, dim=0)  # [N_batch]
-                weighted_com = torch.sum(
+                # Softmax weights ω_i = softmax(z_i)
+                batch_weights = torch.softmax(batch_logits, dim=0)
+
+                # Weighted centroid ĉ = Σ_i ω_i x_i
+                weighted_centroid = torch.sum(
                     batch_weights.unsqueeze(-1) * batch_positions, dim=0
-                )  # [3]
-                geometric_center = batch_positions.mean(dim=0)  # [3]
+                )
+                centroid_predictions.append(weighted_centroid)
 
-                # Use more geometric center for stability
-                final_com = 0.8 * geometric_center + 0.2 * weighted_com
-
-                centroid_predictions.append(final_com)
-            centroid_prediction = torch.stack(centroid_predictions, dim=0)  # [B, 3]
+            centroid_prediction = torch.stack(centroid_predictions, dim=0)
         else:
             # Single graph case
             weights = torch.softmax(raw_logits, dim=0)
-
-            # Predict weighted center of mass
-            weighted_com = torch.sum(weights.unsqueeze(-1) * node_pos, dim=0)  # [3]
-            geometric_center = node_pos.mean(dim=0)  # [3]
-
-            # FIXED: Use more of geometric center for stability
-            final_com = 0.8 * geometric_center + 0.2 * weighted_com
-            centroid_prediction = final_com.unsqueeze(0)  # [1, 3]
+            centroid_prediction = torch.sum(weights.unsqueeze(-1) * x, dim=0).unsqueeze(
+                0
+            )
 
         if self.debug:
-            final_time = time.time() - final_start
             total_time = time.time() - start_time
-            print(
-                f"[DEBUG] Embed: {embed_time:.3f}s, MP: {mp_time:.3f}s, Final: {final_time:.3f}s"
-            )
-            print(f"[DEBUG] Total: {total_time:.3f}s")
+            print(f"[DEBUG] Total forward time: {total_time:.3f}s")
 
         return centroid_prediction
 
-    def _split_sh_features_tensor(self, edge_attr):
-        """Split SH features efficiently keeping as tensors"""
-        features = []
+    def _initialize_node_features(self, x, device):
+        """
+        Initialize node features following math.md specification:
+        "For the first layer, we do not have any node feature f,
+        so we simply set them to spherical harmonics node positions"
+        """
+        # Compute spherical harmonics for each l-value with multiplicity
+        sh_features = spherical_harmonics(self.base_l_values, x, normalize=True)
+
+        # Expand to multiplicity channels
+        expanded_features = []
         start_idx = 0
-        for l in range(self.max_sh_degree + 1):
-            dim_l = 2 * l + 1
-            end_idx = start_idx + dim_l
-            features.append(edge_attr[:, start_idx:end_idx].contiguous())
+
+        for l_value in self.base_l_values:
+            irrep_dim = 2 * l_value + 1
+            end_idx = start_idx + irrep_dim
+
+            # Get the l-th irrep
+            l_features = sh_features[:, start_idx:end_idx]  # [num_nodes, irrep_dim]
+
+            # Replicate for multiplicity channels
+            for channel in range(self.multiplicity):
+                expanded_features.append(l_features)
+
             start_idx = end_idx
-        return features
+
+        # Concatenate all features
+        f = torch.cat(expanded_features, dim=1)  # [num_nodes, total_feature_dim]
+
+        return f

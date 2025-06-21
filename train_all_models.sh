@@ -50,11 +50,11 @@ echo "  4. Large GNN"
 echo ""
 
 # Train each model
-train_model "Baseline Model" "configs/models/baseline/config.yaml" "configs/models/baseline/wandb.yaml" "$@" || exit 1
+# train_model "Baseline Model" "configs/models/baseline/config.yaml" "configs/models/baseline/wandb.yaml" "$@" || exit 1
 
 train_model "Basic GNN" "configs/models/basic_gnn/config.yaml" "configs/models/basic_gnn/wandb.yaml" "$@" || exit 1
 
-train_model "Equivariant GNN" "configs/models/eq_gnn/config.yaml" "configs/models/eq_gnn/wandb.yaml" "$@" || exit 1
+# train_model "Equivariant GNN" "configs/models/eq_gnn/config.yaml" "configs/models/eq_gnn/wandb.yaml" "$@" || exit 1
 
 train_model "Large GNN" "configs/models/large_gnn/config.yaml" "configs/models/large_gnn/wandb.yaml" "$@" || exit 1
 

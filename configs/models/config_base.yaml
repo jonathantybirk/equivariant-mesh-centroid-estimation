@@ -10,7 +10,8 @@ data:
 
 # Trainer configuration - Common for all models
 trainer:
-  max_epochs: 500
+  max_epochs: 1000
+  max_time: "00:02:00:00"  # Maximum training time of 30 minutes
   accelerator: auto
   devices: auto
   precision: 32
@@ -33,7 +34,7 @@ trainer:
         monitor: "val_displacement_distance_epoch"
         mode: "min"
         save_top_k: 1
-        verbose: true
+        verbose: false
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
