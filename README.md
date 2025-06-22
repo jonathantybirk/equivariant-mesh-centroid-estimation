@@ -53,25 +53,7 @@ Find all the options in /configs/preprocess
 
 ### Training
 
-Train the GNN model:
-
-```bash
-python trainer.py fit --config config.yaml
-```
-
-Find all the options in config.yaml
-
-#### Data Augmentation for Base GNN Models
-
-For non-equivariant models, you can enable data augmentation to improve performance:
-
-```bash
-# Train LargeGNN with rotation augmentation (recommended for graph models)
-python trainer.py fit --config config_base.yaml --config config_basic_gnn_augmented.yaml
-
-# Or specify augmentation parameters directly
-python trainer.py fit --model.class_path=LargeGNN --data.use_augmentation=true --data.rotation_prob=0.7
-```
+Find all the options in /configs/models/config_base.yaml
 
 Data augmentation parameters:
 
@@ -82,43 +64,6 @@ Data augmentation parameters:
 
 **Note**: Data augmentation is applied only to training data, not validation data. This is particularly useful for comparing base GNN models with equivariant models that have inherent rotation invariance.
 
-## Geometric Baselines
-
-Two geometric baselines are available for comparison:
-
-- Centroid Baseline: Predicts the center of mass as the mean of all point positions in the point cloud.
-- Convex Hull Centroid Baseline: Predicts the center of mass as the centroid of the convex hull fitted around the point cloud.
-
-### Training a Baseline
-
-Train the centroid baseline:
-
-```bash
-invoke train --model-module=src.model.centroid_baseline.CentroidBaseline --name=centroid_baseline
-```
-
-Train the convex hull centroid baseline:
-
-```bash
-invoke train --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseline --name=convex_hull_baseline
-```
-
-### Evaluating a Baseline
-
-Evaluate a trained centroid baseline:
-
-```bash
-invoke evaluate --name=centroid_baseline --model-module=src.model.centroid_baseline.CentroidBaseline
-```
-
-Evaluate a trained convex hull centroid baseline:
-
-```bash
-invoke evaluate --name=convex_hull_baseline --model-module=src.model.centroid_baseline.ConvexHullCentroidBaseline
-```
-
-These baselines do not require hyperparameters. The convex hull baseline requires scipy (install with `pip install scipy`).
-
 ## Weights & Biases Integration
 
 This project uses Weights & Biases for experiment tracking:
@@ -127,3 +72,44 @@ This project uses Weights & Biases for experiment tracking:
 2. Login (one-time): `wandb login`
 
 After logging in once, W&B will remember your credentials.
+
+### Training Individual Models
+
+```bash
+# Baseline model
+python src/scripts/trainer.py fit --config configs/models/config_base.yaml --config configs/models/baseline/config.yaml --config configs/models/baseline/wandb.yaml
+
+# Basic GNN
+python src/scripts/trainer.py fit --config configs/models/config_base.yaml --config configs/models/basic_gnn/config.yaml --config configs/models/basic_gnn/wandb.yaml
+
+# Basic GNN with Augmentation
+python src/scripts/trainer.py fit --config configs/models/config_base.yaml --config configs/models/basic_gnn_aug/config.yaml --config configs/models/basic_gnn_aug/wandb.yaml
+
+# Equivariant GNN
+python src/scripts/trainer.py fit --config configs/models/config_base.yaml --config configs/models/eq_gnn/config.yaml --config configs/models/eq_gnn/wandb.yaml
+
+```
+
+### Training All Models Sequentially
+
+```bash
+# Using bash script
+bash src/scripts/train_all_models.sh
+```
+
+## Checkpoint Naming
+
+Each model uses descriptive checkpoint naming:
+
+- `baseline-{epoch:02d}-{val_displacement_distance_epoch:.4f}.ckpt`
+- `basic-gnn-{epoch:02d}-{val_displacement_distance_epoch:.4f}.ckpt`
+- `basic-gnn-aug-{epoch:02d}-{val_displacement_distance_epoch:.4f}.ckpt`
+- `eq-gnn-{epoch:02d}-{val_displacement_distance_epoch:.4f}.ckpt`
+
+## WandB Organization
+
+Each model has specific WandB configurations:
+
+- **Project**: `gnn-center-of-mass`
+- **Tags**: Model-specific tags for easy filtering
+- **Names**: Descriptive experiment names for identification

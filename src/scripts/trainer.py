@@ -27,17 +27,13 @@ from tqdm import tqdm
 import numpy as np
 from torch import nn
 
+# Add project root to path FIRST
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import available models
-from src.model.baseline import Baseline
-from src.model.basic_gnn import BasicGNN, ImprovedBasicGNN
-from src.model.eq_gnn import (
-    EquivariantGNN,
-)
-from src.model.large_gnn import LargeGNN
-
-# Add project root to path
-sys.path.insert(0, str(Path(__file__).parent))
+from src.models.baseline import Baseline
+from src.models.basic_gnn import BasicGNN
+from src.models.eq_gnn import EquivariantGNN
 
 
 def random_rotation_matrix(device=None, dtype=None):
@@ -53,7 +49,7 @@ def random_rotation_matrix(device=None, dtype=None):
     """
     # Set defaults
     if device is None:
-        device = torch.device("cpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if dtype is None:
         dtype = torch.float32
 
@@ -172,7 +168,7 @@ class PointCloudData(pl.LightningDataModule):
         num_workers=0,
         # Data augmentation parameters
         use_augmentation=False,
-        rotation_prob=0.5,
+        rotation_prob=1,
     ):
         super().__init__()
         self.save_hyperparameters()

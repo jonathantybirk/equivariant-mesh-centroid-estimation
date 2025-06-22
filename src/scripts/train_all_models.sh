@@ -11,19 +11,17 @@ echo ""
 # Function to run training with error handling
 train_model() {
     local model_name="$1"
-    local config_path="$2"
-    local wandb_path="$3"
-    shift 3  # Remove the first 3 arguments, leaving only additional args
+    shift  # Remove the first argument, leaving only additional args
     
     echo "=================================================="
     echo "🔄 Training: $model_name"
     echo "=================================================="
     
     # Run the training command with all additional arguments
-    python trainer.py fit \
+    python src/scripts/trainer.py fit \
         --config configs/models/config_base.yaml \
-        --config "$config_path" \
-        --config "$wandb_path" \
+        --config configs/models/$model_name/config.yaml \
+        --config configs/models/$model_name/wandb.yaml \
         "$@"
     
     local exit_code=$?
@@ -45,20 +43,15 @@ start_time=$(date +%s)
 echo "📋 Training Queue:"
 echo "  1. Baseline Model"
 echo "  2. Basic GNN"  
-echo "  3. Equivariant GNN"
-echo "  4. Large GNN"
+echo "  3. Basic GNN Aug"
+echo "  4. Equivariant GNN"
 echo ""
 
 # Train each model
-train_model "Baseline Model" "configs/models/baseline/config.yaml" "configs/models/baseline/wandb.yaml" "$@" || exit 1
-
-# train_model "Basic GNN" "configs/models/basic_gnn/config.yaml" "configs/models/basic_gnn/wandb.yaml" "$@" || exit 1
-
-train_model "Equivariant GNN" "configs/models/eq_gnn/config.yaml" "configs/models/eq_gnn/wandb.yaml" "$@" || exit 1
-
-# train_model "Large GNN" "configs/models/large_gnn/config.yaml" "configs/models/large_gnn/wandb.yaml" "$@" || exit 1
-
-train_model "Basic GNN" "configs/models/improved_basic_gnn/config.yaml" "configs/models/improved_basic_gnn/wandb.yaml" "$@" || exit 1
+train_model "baseline" "$@" || exit 1
+train_model "basic_gnn" "$@" || exit 1
+train_model "basic_gnn_aug" "$@" || exit 1
+train_model "eq_gnn" "$@" || exit 1
 
 # Calculate total time
 end_time=$(date +%s)
@@ -68,6 +61,3 @@ seconds=$((total_time % 60))
 
 echo "🎉 All models trained successfully!"
 echo "⏱️  Total time: ${minutes}m ${seconds}s"
-echo ""
-echo "📊 Check your W&B dashboard for results:"
-echo "   https://wandb.ai/your-username/gnn-center-of-mass" 

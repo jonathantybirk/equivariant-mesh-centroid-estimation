@@ -1,5 +1,5 @@
 model:
-  class_path: src.model.eq_gnn.EquivariantGNN
+  class_path: EquivariantGNN
   init_args:
     message_passing_steps: 2
     final_mlp_dims: [64, 32]

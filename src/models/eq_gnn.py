@@ -125,6 +125,12 @@ class EquivariantCGLayer(nn.Module):
 
         self.num_connections = len(valid_connections)
 
+        # Add learnable weights for each CG connection and multiplicity channel
+        # Shape: [num_connections, node_multiplicity]
+        self.cg_weights = nn.Parameter(
+            torch.randn(self.num_connections, self.node_multiplicity) * 0.1
+        )
+
     def forward(self, edge_index, f, d, a):
         """
         Forward pass implementing math.md specification:
@@ -184,8 +190,12 @@ class EquivariantCGLayer(nn.Module):
                 h_ch_end = (channel + 1) * h_irrep_dims[h_idx_int]
                 h_ch = h_features[:, h_ch_start:h_ch_end]
 
-                # CG product: h ⊗ a → message
+                # CG product: h ⊗ a → message with learnable weight
                 msg = torch.einsum("hao,eh,ea->eo", cg, h_ch, a_features)
+
+                # Apply learnable weight for this connection and channel
+                weight = self.cg_weights[conn_idx, channel]
+                msg = weight * msg
 
                 # Add to output messages
                 out_idx_int = (

@@ -1,23 +1,16 @@
-# WandB configuration for Equivariant GNN model
-# Usage: python trainer.py fit --config config_base.yaml --config configs/models/eq_gnn/config.yaml --config configs/models/eq_gnn/wandb.yaml
-
 trainer:
-  # Enable Weights & Biases logger
   logger:
     class_path: lightning.pytorch.loggers.WandbLogger
     init_args:
       project: "gnn-center-of-mass"
-      name: "equivariant-gnn"  # Specific name for EQ-GNN
+      name: "eq_gnn"  # Specific name for Basic GNN
       save_dir: "wandb_logs"
       log_model: "all"
-      tags: ["equivariant-gnn", "e3nn", "7k-params"]
-  
-  # Add checkpoint callback with custom naming
-  callbacks:
+  callbacks+:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
         dirpath: "checkpoints"
-        filename: "eq-gnn-{epoch:02d}-{val_displacement_distance_epoch:.4f}"
+        filename: "eq_gnn-{epoch:02d}-{val_displacement_distance_epoch:.4f}"
         monitor: "val_displacement_distance_epoch"
         mode: "min"
         save_top_k: 1
