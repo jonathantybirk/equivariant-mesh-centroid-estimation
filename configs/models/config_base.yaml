@@ -15,14 +15,10 @@ trainer:
   accelerator: auto
   devices: auto
   precision: 32
-  # gradient_clip_val: 0.5  # FIXED: More conservative gradient clipping
-  # gradient_clip_algorithm: "norm"
-  # Common callbacks for all models
   callbacks:
-    # Model summary with detailed submodule parameter breakdown
     - class_path: lightning.pytorch.callbacks.ModelSummary
       init_args:
-        max_depth: -1  # Show ALL submodules
+        max_depth: -1 
     - class_path: lightning.pytorch.callbacks.EarlyStopping
       init_args:
         monitor: "val_displacement_distance_epoch"
@@ -38,5 +34,5 @@ trainer:
     - class_path: lightning.pytorch.callbacks.LearningRateMonitor
       init_args:
         logging_interval: "epoch"
-    - class_path: src.callbacks.parameter_logger.ParameterCountLogger
-      init_args: {} 
+    # - class_path: src.callbacks.parameter_logger.ParameterCountLogger
+    #   init_args: {} 

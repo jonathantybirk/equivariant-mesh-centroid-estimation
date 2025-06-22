@@ -30,8 +30,10 @@ from torch import nn
 
 # Import available models
 from src.model.baseline import Baseline
-from src.model.basic_gnn import BasicGNN
-from src.model.eq_gnn import EquivariantGNN
+from src.model.basic_gnn import BasicGNN, ImprovedBasicGNN
+from src.model.eq_gnn import (
+    EquivariantGNN,
+)
 from src.model.large_gnn import LargeGNN
 
 # Add project root to path

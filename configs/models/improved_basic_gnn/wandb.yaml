@@ -1,0 +1,23 @@
+# WandB configuration for Basic GNN model
+# Usage: python trainer.py fit --config config_base.yaml --config configs/models/basic_gnn/config.yaml --config configs/models/basic_gnn/wandb.yaml
+
+trainer:
+  # Enable Weights & Biases logger
+  logger:
+    class_path: lightning.pytorch.loggers.WandbLogger
+    init_args:
+      project: "gnn-center-of-mass"
+      name: "improved-basic-gnn"  # Specific name for Basic GNN
+      save_dir: "wandb_logs"
+      log_model: "all"
+  
+  # Add checkpoint callback with custom naming
+  callbacks:
+    - class_path: lightning.pytorch.callbacks.ModelCheckpoint
+      init_args:
+        dirpath: "checkpoints"
+        filename: "basic-gnn-{epoch:02d}-{val_displacement_distance_epoch:.4f}"
+        monitor: "val_displacement_distance_epoch"
+        mode: "min"
+        save_top_k: 1
+        verbose: true 

@@ -20,7 +20,8 @@ import time
 import numpy as np
 import argparse
 from pathlib import Path
-from trainer import EquivariantGNN, PointCloudData
+from scipy import stats
+from trainer import EquivariantGNN, PointCloudData, ImprovedBasicGNN, BasicGNN, Baseline
 
 
 def load_model_from_checkpoint(checkpoint_path, device="cpu"):
@@ -29,6 +30,28 @@ def load_model_from_checkpoint(checkpoint_path, device="cpu"):
 
     if not Path(checkpoint_path).exists():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+    # Determine model type from checkpoint filename
+    checkpoint_name = Path(checkpoint_path).stem.lower()
+
+    if "eq_gnn" in checkpoint_name:
+        model_class = EquivariantGNN
+        model_name = "EquivariantGNN"
+    elif "improved_basic" in checkpoint_name:
+        model_class = ImprovedBasicGNN
+        model_name = "ImprovedBasicGNN"
+    elif "simple_gnn" in checkpoint_name:
+        model_class = BasicGNN
+        model_name = "BasicGNN"
+    elif "baseline" in checkpoint_name:
+        model_class = Baseline
+        model_name = "Baseline"
+    else:
+        # Default fallback - try to infer from hyperparameters
+        model_class = BasicGNN
+        model_name = "BasicGNN (default)"
+
+    print(f"   Detected model type: {model_name}")
 
     # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
@@ -46,11 +69,15 @@ def load_model_from_checkpoint(checkpoint_path, device="cpu"):
             "message_passing_steps",
             "final_mlp_dims",
             "edge_sh_degree",
+            "node_l_values",
+            "node_multiplicity",
+            "message_mlp_dims",
             "init_method",
             "seed",
             "debug",
             "lr",
             "weight_decay",
+            "dropout",
         }
 
         for key, value in hparams.items():
@@ -60,10 +87,17 @@ def load_model_from_checkpoint(checkpoint_path, device="cpu"):
         print(f"   Using model hyperparameters: {list(model_hparams.keys())}")
 
         # Create model with filtered hyperparameters
-        model = EquivariantGNN(**model_hparams)
+        try:
+            model = model_class(**model_hparams)
+        except Exception as e:
+            print(
+                f"   Warning: Failed to create {model_name} with hyperparameters: {e}"
+            )
+            print(f"   Falling back to default parameters...")
+            model = model_class()
     else:
         print("   No hyperparameters found, using defaults")
-        model = EquivariantGNN()
+        model = model_class()
 
     # Load state dict
     if "state_dict" in checkpoint:
@@ -85,10 +119,21 @@ def load_model_from_checkpoint(checkpoint_path, device="cpu"):
     return model
 
 
-def create_random_model():
+def create_random_model(model_type="BasicGNN"):
     """Create a model with random weights for baseline testing"""
-    print("🎲 Creating model with random weights")
-    model = EquivariantGNN()
+    print(f"🎲 Creating {model_type} with random weights")
+
+    if model_type.lower() == "eq_gnn":
+        model = EquivariantGNN()
+    elif model_type.lower() == "improved_basic_gnn":
+        model = ImprovedBasicGNN()
+    elif model_type.lower() == "basic_gnn":
+        model = BasicGNN()
+    elif model_type.lower() == "baseline":
+        model = Baseline()
+    else:  # Default to BasicGNN
+        model = EquivariantGNN()
+
     model.eval()
     return model
 
@@ -131,7 +176,7 @@ def test_rotation_equivariance(model):
 
     all_errors = []
     test_samples = 0
-    max_samples = 5  # Test on first 5 validation samples
+    max_samples = 10  # Test on first 5 validation samples
 
     print(f"   Testing on up to {max_samples} real validation samples...")
 
@@ -223,11 +268,37 @@ def test_rotation_equivariance(model):
     max_error = np.max(all_errors)
     std_error = np.std(all_errors)
 
+    # Statistical t-test: H0: mean error = 0 (perfect equivariance)
+    n = len(all_errors)
+    t_statistic, p_value = stats.ttest_1samp(all_errors, 0.0)
+
+    # 95% confidence interval for the mean error
+    confidence_level = 0.95
+    alpha = 1 - confidence_level
+    t_critical = stats.t.ppf(1 - alpha / 2, df=n - 1)
+    margin_of_error = t_critical * (std_error / np.sqrt(n))
+    ci_lower = avg_error - margin_of_error
+    ci_upper = avg_error + margin_of_error
+
     print(f"\n   📊 Overall Statistics (across {test_samples} samples):")
     print(f"     Average error: {avg_error:.6f}")
     print(f"     Max error: {max_error:.6f}")
     print(f"     Std error: {std_error:.6f}")
     print(f"     Total rotations tested: {len(all_errors)}")
+
+    print(f"\n   📈 Statistical Analysis:")
+    print(f"     T-statistic: {t_statistic:.6f}")
+    print(f"     P-value: {p_value:.2e}")
+    print(f"     95% Confidence Interval: [{ci_lower:.6f}, {ci_upper:.6f}]")
+
+    if p_value < 0.05:
+        print(
+            f"     ❌ Reject H0: Significant deviation from perfect equivariance (p < 0.05)"
+        )
+    else:
+        print(
+            f"     ✅ Fail to reject H0: No significant deviation from perfect equivariance (p ≥ 0.05)"
+        )
 
     # Check if equivariant (error should be very small for a truly equivariant model)
     # Note: Real models might have small numerical errors, so we use a slightly more lenient threshold
@@ -247,7 +318,7 @@ def test_rotation_equivariance(model):
                 f"   💡 Error is still quite small - model may be approximately equivariant"
             )
 
-    return is_equivariant, avg_error
+    return is_equivariant, avg_error, t_statistic, p_value, ci_lower, ci_upper
 
 
 def run_equivariance_tests(model):
@@ -256,7 +327,13 @@ def run_equivariance_tests(model):
     print("🔍 EQUIVARIANCE TESTS")
     print("=" * 50)
 
-    rot_equivariant, rot_error = test_rotation_equivariance(model)
+    rot_result = test_rotation_equivariance(model)
+    if len(rot_result) == 6:
+        rot_equivariant, rot_error, t_statistic, p_value, ci_lower, ci_upper = (
+            rot_result
+        )
+    else:
+        rot_equivariant, rot_error = rot_result
 
     # SKIP TRANSLATION EQUIVARIANCE - Dataset has centroid at origin
     # Translation equivariance is achieved through preprocessing (centering point clouds)
@@ -295,12 +372,7 @@ def analyze_network_predictions(model):
     print("\n🔍 DETAILED NETWORK OUTPUT ANALYSIS")
     print("=" * 50)
 
-    data_module = PointCloudData(
-        data_dir="data/processed_dv",
-        batch_size=4,
-        val_split=0.2,
-        num_workers=0,
-    )
+    data_module = PointCloudData()
     data_module.setup()
 
     val_loader = data_module.val_dataloader()
@@ -549,23 +621,11 @@ def main():
         default="all",
         help="Which tests to run",
     )
-    parser.add_argument(
-        "--data-dir", type=str, default="data/processed_sh", help="Data directory"
-    )
-    parser.add_argument(
-        "--batch-size", type=int, default=2, help="Batch size for testing"
-    )
-    parser.add_argument("--device", type=str, default="cpu", help="Device to run on")
 
     args = parser.parse_args()
 
     # Setup data module
-    data_module = PointCloudData(
-        data_dir=args.data_dir,
-        batch_size=args.batch_size,
-        val_split=0.2,
-        num_workers=0,
-    )
+    data_module = PointCloudData()
 
     # Load or create model
     if args.checkpoint:

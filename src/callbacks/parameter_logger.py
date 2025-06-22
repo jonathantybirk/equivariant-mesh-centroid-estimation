@@ -31,7 +31,9 @@ class ParameterCountLogger(pl.Callback):
                 param_breakdown[f"params/{name}"] = module_params
 
         # Log to WandB via the logger
-        if hasattr(trainer.logger, "experiment"):
+        if hasattr(trainer.logger, "experiment") and hasattr(
+            trainer.logger.experiment, "config"
+        ):
             # Log to WandB config (metadata)
             try:
                 trainer.logger.experiment.config.update(

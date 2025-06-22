@@ -43,45 +43,34 @@ class EquivariantCGLayer(nn.Module):
         self.edge_sh_degree = edge_sh_degree
         self.node_l_values = node_l_values  # [0, 1, 2, ...]
         self.node_multiplicity = node_multiplicity
+        self.message_mlp_dims = message_mlp_dims
+        self.dropout = dropout
         self.debug = debug
 
-        # Precompute CG tensor and learnable weights
+        # Store h and a l-values for forward pass
+        self.h_l_values = self.node_l_values + self.node_l_values + [0]
+        self.a_l_values = list(range(self.edge_sh_degree + 1))
+
+        # Precompute CG tensors
         self._precompute_cg_tensor()
 
-        # Learnable weights W_a^(1) and W_a^(2) for each edge attribute degree
-        # Following math.md: m_ij = σ_g(W_a^(2) σ_g(W_a^(1) h_ij))
-        self.edge_weights_1 = nn.ParameterDict()
-        self.edge_weights_2 = nn.ParameterDict()
+        # MLP for node updates ψ_f: takes invariants from f_i, messages, and distance
+        invariant_dim = len(self.node_l_values)  # Number of invariant features
+        psi_input_dim = (
+            invariant_dim + invariant_dim + 1
+        )  # f_invariants + msg_invariants + avg_distances
 
-        for a_l in range(self.edge_sh_degree + 1):
-            # Weights for each edge attribute degree
-            self.edge_weights_1[str(a_l)] = nn.Parameter(torch.randn(1) * 0.1)
-            self.edge_weights_2[str(a_l)] = nn.Parameter(torch.randn(1) * 0.1)
-
-        # ψ_f MLP for node updates: f_i' = ψ_f(f_i, Σ_j m_ij, d_i)
-        # Input: invariant features from f_i + invariant features from messages + distance
-        invariant_dim = len(self.node_l_values)  # One invariant per l-value
-        input_dim = (
-            invariant_dim * 2 + 1
-        )  # f_i invariants + message invariants + distance
-
-        # Build configurable message MLP
-        message_layers = []
-        prev_dim = input_dim
-
-        for dim in message_mlp_dims:
-            message_layers.append(nn.Linear(prev_dim, dim))
-            message_layers.append(nn.ReLU())
-            if dropout > 0:
-                message_layers.append(nn.Dropout(dropout))
+        psi_layers = []
+        prev_dim = psi_input_dim
+        for dim in self.message_mlp_dims:
+            psi_layers.append(nn.Linear(prev_dim, dim))
+            psi_layers.append(nn.LayerNorm(dim))
+            psi_layers.append(nn.ReLU())
+            if self.dropout > 0:
+                psi_layers.append(nn.Dropout(self.dropout))
             prev_dim = dim
-
-        message_layers.append(
-            nn.Linear(prev_dim, invariant_dim)
-        )  # Output gate for each l-type
-        message_layers.append(nn.Sigmoid())
-
-        self.psi_f = nn.Sequential(*message_layers)
+        psi_layers.append(nn.Linear(prev_dim, len(self.node_l_values)))
+        self.psi_f = nn.Sequential(*psi_layers)
 
     def _precompute_cg_tensor(self):
         """
@@ -177,18 +166,14 @@ class EquivariantCGLayer(nn.Module):
             h_idx, a_l, out_idx = self.valid_connections[conn_idx]
             cg = getattr(self, f"cg_{conn_idx}")
 
-            # Get learnable edge weights (convert tensor element to int)
-            a_l_int = int(a_l.item()) if hasattr(a_l, "item") else int(a_l)
-            w1 = self.edge_weights_1[str(a_l_int)]
-            w2 = self.edge_weights_2[str(a_l_int)]
-
             # Get h irrep features (convert tensor element to int)
             h_idx_int = int(h_idx.item()) if hasattr(h_idx, "item") else int(h_idx)
             h_start = sum(h_irrep_dims[:h_idx_int]) * self.node_multiplicity
             h_end = h_start + h_irrep_dims[h_idx_int] * self.node_multiplicity
             h_features = h[:, h_start:h_end]
 
-            # Get a irrep features
+            # Get a irrep features (convert tensor element to int)
+            a_l_int = int(a_l.item()) if hasattr(a_l, "item") else int(a_l)
             a_start = sum(a_irrep_dims[:a_l_int])
             a_end = a_start + a_irrep_dims[a_l_int]
             a_features = a[:, a_start:a_end]
@@ -200,13 +185,7 @@ class EquivariantCGLayer(nn.Module):
                 h_ch = h_features[:, h_ch_start:h_ch_end]
 
                 # CG product: h ⊗ a → message
-                raw_msg = torch.einsum("hao,eh,ea->eo", cg, h_ch, a_features)
-
-                # Apply two-layer edge gating: m = σ_g(W_a^(2) σ_g(W_a^(1) h))
-                # First layer
-                gated_msg_1 = torch.tanh(w1 * raw_msg)
-                # Second layer
-                gated_msg_2 = torch.tanh(w2 * gated_msg_1)
+                msg = torch.einsum("hao,eh,ea->eo", cg, h_ch, a_features)
 
                 # Add to output messages
                 out_idx_int = (
@@ -217,7 +196,7 @@ class EquivariantCGLayer(nn.Module):
                     + channel * out_irrep_dims[out_idx_int]
                 )
                 out_end = out_start + out_irrep_dims[out_idx_int]
-                messages[:, out_start:out_end] += gated_msg_2
+                messages[:, out_start:out_end] += msg
 
         # Step 3: Aggregate messages to nodes
         aggregated_messages = torch.zeros(num_nodes, out_dim, device=device)
@@ -239,7 +218,17 @@ class EquivariantCGLayer(nn.Module):
 
         # ψ_f MLP: takes invariants from f_i, messages, and distance
         psi_input = torch.cat([f_invariants, msg_invariants, avg_distances], dim=1)
-        gates = self.psi_f(psi_input)  # [num_nodes, len(node_l_values)]
+
+        if self.debug:
+            print(f"[DEBUG] f_invariants shape: {f_invariants.shape}")
+            print(f"[DEBUG] msg_invariants shape: {msg_invariants.shape}")
+            print(f"[DEBUG] avg_distances shape: {avg_distances.shape}")
+            print(f"[DEBUG] psi_input shape: {psi_input.shape}")
+            print(
+                f"[DEBUG] Expected psi_input dim: {len(self.node_l_values) + len(self.node_l_values) + 1}"
+            )
+
+        gates = self.psi_f(psi_input)
 
         # Apply gates to each l-type separately
         updated_f = torch.zeros_like(f)

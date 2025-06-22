@@ -1,0 +1,9 @@
+logger:
+  class_path: pytorch_lightning.loggers.WandbLogger
+  init_args:
+    project: equivariant-center-of-mass
+    name: fair_comparison_gnn
+    tags:
+      - fair_comparison
+      - non_equivariant
+      - baseline 

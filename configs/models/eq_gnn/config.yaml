@@ -1,15 +1,15 @@
 model:
-  class_path: EquivariantGNN
+  class_path: src.model.eq_gnn.EquivariantGNN
   init_args:
-    lr: 1e-3  # FIXED: More conservative base LR (will peak at 0.02 with new scheduler)
-    weight_decay: 1e-5  # FIXED: Add more regularization to prevent overfitting
-    node_multiplicity: 3  # Good balance
-    message_passing_steps: 2  # FIXED: Reduce to avoid vanishing gradients in deeper layers
-    edge_sh_degree: 2  # Angular resolution for edge directions
-    node_l_values: [0, 1, 2]  # Node feature types: scalars, vectors, tensors
-    message_mlp_dims: [64, 32]  # Message aggregation MLP architecture
-    final_mlp_dims: [64, 32]  # Final prediction MLP architecture
-    dropout: 0.02  # FIXED: Increase dropout for better regularization
-    debug: false
-    init_method: "xavier" 
+    message_passing_steps: 2
+    final_mlp_dims: [64, 32]
+    message_mlp_dims: [64, 32]
+    edge_sh_degree: 2
+    init_method: xavier
     seed: 42
+    debug: false  # Disable debug mode
+    lr: 1e-3
+    weight_decay: 1e-5
+    node_multiplicity: 3
+    dropout: 0.02
+    node_l_values: [0, 1, 2]
