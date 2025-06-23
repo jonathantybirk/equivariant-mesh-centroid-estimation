@@ -26,6 +26,10 @@ warnings.filterwarnings("ignore")
 # Import models and data loading from trainer
 from src.scripts.trainer import EquivariantGNN, BasicGNN, Baseline
 
+# Create results directory if it doesn't exist
+RESULTS_DIR = Path("results")
+RESULTS_DIR.mkdir(exist_ok=True)
+
 # Define professional color palette for academic publication (same as visualization script)
 MODEL_COLORS = {
     "Baseline": "#696969",  # Dim Gray
@@ -773,10 +777,11 @@ def create_combined_visualization(results_dict):
             inference_times_ms.append(0)
             inference_time_cis.append(0)
 
-    # Create bars for inference time
+    # Create bars for inference time (using same width as left subplot)
     bars3 = ax2.bar(
-        models,
+        x,  # Use same x positions as left subplot
         inference_times_ms,
+        width,  # Use same width as individual bars on left subplot
         yerr=inference_time_cis,
         capsize=5,
         color=[MODEL_COLORS[model] for model in models],
@@ -790,6 +795,7 @@ def create_combined_visualization(results_dict):
     ax2.set_title(
         "(b) Inference Time Comparison", fontsize=12, fontweight="bold", pad=15
     )
+    ax2.set_xticks(x)  # Use same x positions as left subplot
     ax2.set_xticklabels(models, fontsize=10, rotation=45, ha="right")
 
     # Add value labels on bars
@@ -813,14 +819,14 @@ def create_combined_visualization(results_dict):
 
     # Save both PNG and PDF for publications
     plt.savefig(
-        "performance_equivariance_comparison.png",
+        RESULTS_DIR / "performance_equivariance_comparison.png",
         dpi=300,
         bbox_inches="tight",
         facecolor="white",
         edgecolor="none",
     )
     plt.savefig(
-        "performance_equivariance_comparison.pdf",
+        RESULTS_DIR / "performance_equivariance_comparison.pdf",
         dpi=300,
         bbox_inches="tight",
         facecolor="white",
@@ -864,7 +870,7 @@ def save_results_data(
             "mean_inference_time": float(data.get("mean_inference_time", 0.0)),
         }
 
-    with open(filename, "wb") as f:
+    with open(RESULTS_DIR / filename, "wb") as f:
         pickle.dump(save_data, f)
 
     print(f"✅ Raw results saved successfully!")
@@ -874,10 +880,10 @@ def load_results_data(filename="model_results_raw.pkl"):
     """Load raw results data from pickle file"""
     print(f"\n📂 Loading raw results data from {filename}...")
 
-    if not Path(filename).exists():
-        raise FileNotFoundError(f"Results file not found: {filename}")
+    if not Path(RESULTS_DIR / filename).exists():
+        raise FileNotFoundError(f"Results file not found: {RESULTS_DIR / filename}")
 
-    with open(filename, "rb") as f:
+    with open(RESULTS_DIR / filename, "rb") as f:
         save_data = pickle.load(f)
 
     # Handle both old and new file formats

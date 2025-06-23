@@ -11,12 +11,16 @@ MODEL_COLORS = {
     "Equivariant GNN": "#d62728",  # Professional Red
 }
 
+# Create results directory if it doesn't exist
+RESULTS_DIR = Path("results")
+RESULTS_DIR.mkdir(exist_ok=True)
+
 
 def load_and_clean_data():
     """Load and clean the training and validation data"""
-    # Load the data
-    train_df = pd.read_csv("train.csv")
-    val_df = pd.read_csv("val.csv")
+    # Load the data from results directory
+    train_df = pd.read_csv(RESULTS_DIR / "train.csv")
+    val_df = pd.read_csv(RESULTS_DIR / "val.csv")
 
     # Extract model performance data (in desired display order)
     models = {
@@ -164,14 +168,14 @@ def create_focused_visualization():
     plt.subplots_adjust(bottom=0.15)  # Make room for legend
 
     plt.savefig(
-        "training_validation_analysis.png",
+        RESULTS_DIR / "training_validation_analysis.png",
         dpi=300,
         bbox_inches="tight",
         facecolor="white",
         edgecolor="none",
     )
     plt.savefig(
-        "training_validation_analysis.pdf",
+        RESULTS_DIR / "training_validation_analysis.pdf",
         dpi=300,
         bbox_inches="tight",
         facecolor="white",
@@ -239,5 +243,7 @@ if __name__ == "__main__":
     print_performance_summary()
 
     print("\nFiles generated:")
-    print("- training_validation_analysis.png (High-res PNG)")
-    print("- training_validation_analysis.pdf (Vector PDF for publications)")
+    print(f"- {RESULTS_DIR / 'training_validation_analysis.png'} (High-res PNG)")
+    print(
+        f"- {RESULTS_DIR / 'training_validation_analysis.pdf'} (Vector PDF for publications)"
+    )
